@@ -386,7 +386,40 @@ namespace cAlgo.Robots
             }
         }
 
-        
+
+        #region Custom Functions 
+
+        #region CheckPreChecks
+        private void CheckPreChecks()
+        {
+            _isPreChecksOk = true;
+
+            //Slippage must be >= 0
+            if (MaxSlippage < 0)
+            {
+                _isPreChecksOk = false;
+                Print("Slippage must be a positive value");
+                return;
+            }
+            //MaxSpread must be >= 0
+            if (MaxSpread < 0)
+            {
+                _isPreChecksOk = false;
+                Print("Maximum Spread must be a positive value");
+                return;
+            }
+            //MaxRiskPerTrade is a % between 0 and 100
+            if (MaxRiskPerTrade < 0 || MaxRiskPerTrade > 100)
+            {
+                _isPreChecksOk = false;
+                Print("Maximum Risk Per Trade must be a percentage between 0 and 100");
+                return;
+            }
+        }
+
+        #endregion
+
+        #endregion
 
         private int SupportResistanceSignal(int index)
         {
