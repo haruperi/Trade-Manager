@@ -358,6 +358,14 @@ namespace cAlgo.Robots
 
             if (!_isPreChecksOk) Stop();
 
+            _dailyBars = MarketData.GetBars(TimeFrame.Daily);
+
+            _adrCurrent = 0;
+            _adrPercent = 0;
+            _adrOverall = 0;
+
+
+            _breakoutSignal = 0;
             LastBreakOutBuy = null;
             LastBreakOutSell = null;
             _lastIndex = -1;
@@ -390,6 +398,8 @@ namespace cAlgo.Robots
             ScanOrders();
 
             EvaluateEntry();
+
+            ExecuteEntry();
 
             int index = Bars.ClosePrices.Count - 1;
             int signal = SupportResistanceSignal(index);
@@ -457,6 +467,7 @@ namespace cAlgo.Robots
             _totalPendingBuy = 0;
             _totalPendingSell = 0;
             _totalPendingOrders = 0;
+
             _signalEntry = 0;
             _signalExit = 0;
 
@@ -532,13 +543,260 @@ namespace cAlgo.Robots
                 if (MyAutoStrategyName == AutoStrategyName.BreakoutTrading)
                 {
                     if (_breakoutSignal == 1) _signalEntry = 1;
-                    if (_breakoutSignal == 0) _signalEntry = -1;
+                    if (_breakoutSignal == -1) _signalEntry = -1;
                 }
             }
 
             if (_signalEntry == 1 && MyOpenTradeType == OpenTradeType.Sell) _signalEntry = 0;
             if (_signalEntry == -1 && MyOpenTradeType == OpenTradeType.Buy) _signalEntry = 0;
         }
+        #endregion
+
+        #region Execute Entry
+        private void ExecuteEntry()
+        {
+            if (_signalEntry == 0) return;
+
+            double StopLoss = 0;
+            double TakeProfit = 0;
+            double _volumeInUnits = 0;
+
+            if (MyStopLossMode == StopLossMode.SL_None) StopLoss = 0;
+            if (MyStopLossMode == StopLossMode.SL_Fixed) StopLoss = DefaultStopLoss;
+            if (MyStopLossMode == StopLossMode.SL_Auto_ADR) StopLoss = Math.Round(_adrOverall / ADR_SL, 0);
+
+            if (MyTakeProfitMode == TakeProfitMode.TP_None) TakeProfit = 0;
+            if (MyTakeProfitMode == TakeProfitMode.TP_Fixed) TakeProfit = DefaultTakeProfit;
+            if (MyTakeProfitMode == TakeProfitMode.TP_Auto_RRR) TakeProfit = Math.Round(StopLoss * RiskRewardRatio + CommissionsPips, 0);
+            if (MyTakeProfitMode == TakeProfitMode.TP_Auto_ADR) TakeProfit = Math.Round(_adrOverall / StopLoss + CommissionsPips, 0);
+
+            if (MyPositionSizeMode == PositionSizeMode.Risk_Fixed) _volumeInUnits = Symbol.QuantityToVolumeInUnits(DefaultLotSize);
+            if (MyPositionSizeMode == PositionSizeMode.Risk_Auto) _volumeInUnits = LotSizeCalculate();
+
+            if (UseFakeStopLoss && FakeStopLoss > 2 * _adrOverall) StopLoss = FakeStopLoss;
+            if (UseFakeStopLoss && FakeStopLoss < 2 * _adrOverall) StopLoss = 2 * _adrOverall;
+
+            if (_signalEntry == 1 && _totalOpenBuy <= MaxPositions && _totalOpenBuy <= MaxBuyPositions)
+            {
+                if (_totalOpenBuy > 0 && AutoTradeManagement)
+                {
+                    if (Symbol.Ask < _nextBuyCostAveLevel)
+                    {
+                        var result = ExecuteMarketOrder(TradeType.Buy, SymbolName, _volumeInUnits, OrderComment, StopLoss, TakeProfit);
+                        if (result.Error != null) GetError(result.Error.ToString());
+                        else
+                        {
+                            Print("Position with ID " + result.Position.Id + " was opened");
+                            _nextBuyCostAveLevel = Symbol.Ask - PipsToDigits(CostAveDistance);
+                            _nextBuyPyAddLevel = Symbol.Ask + PipsToDigits(PyramidDistance);
+                        }
+                    }
+
+                }
+
+                if (_totalOpenBuy == 0)
+                {
+                    if (SplitTrades)
+                    {
+
+                    }
+                    var result = ExecuteMarketOrder(TradeType.Buy, SymbolName, _volumeInUnits, OrderComment, StopLoss, TakeProfit);
+                    if (result.Error != null) GetError(result.Error.ToString());
+                    else
+                    {
+                        Print("Position with ID " + result.Position.Id + " was opened");
+                        _nextBuyCostAveLevel = Symbol.Ask - PipsToDigits(CostAveDistance);
+                        _nextBuyPyAddLevel = Symbol.Ask + PipsToDigits(PyramidDistance);
+                    }
+                }
+
+            }
+
+            if (_signalEntry == -1 && _totalOpenSell <= MaxPositions && _totalOpenSell <= MaxSellPositions)
+            {
+                if (_totalOpenSell > 0 && AutoTradeManagement)
+                {
+                    if (Symbol.Bid > _nextSellCostAveLevel)
+                    {
+                        var result = ExecuteMarketOrder(TradeType.Sell, SymbolName, _volumeInUnits, OrderComment, StopLoss, TakeProfit);
+                        if (result.Error != null) GetError(result.Error.ToString());
+                        else
+                        {
+                            Print("Position with ID " + result.Position.Id + " was opened");
+                            _nextSellCostAveLevel = Symbol.Bid + PipsToDigits(CostAveDistance);
+                            _nextSellPyrAddLevel = Symbol.Bid - PipsToDigits(PyramidDistance);
+                        }
+                    }
+                }
+
+                if (_totalOpenSell == 0)
+                {
+                    var result = ExecuteMarketOrder(TradeType.Sell, SymbolName, _volumeInUnits, OrderComment, StopLoss, TakeProfit);
+                    if (result.Error != null) GetError(result.Error.ToString());
+                    else
+                    {
+                        Print("Position with ID " + result.Position.Id + " was opened");
+                        _nextSellCostAveLevel = Symbol.Bid + PipsToDigits(CostAveDistance);
+                        _nextSellPyrAddLevel = Symbol.Bid - PipsToDigits(PyramidDistance);
+                    }
+                }
+            }
+
+
+
+        }
+        #endregion
+
+        #region Helper Functions
+        #region Lot Size Calculate
+        private double LotSizeCalculate()
+        {
+            double RiskBaseAmount = 0;
+            double _lotSize = DefaultLotSize;
+            if (MyRiskBase == RiskBase.BaseEquity) RiskBaseAmount = Account.Equity;
+            if (MyRiskBase == RiskBase.BaseBalance) RiskBaseAmount = Account.Balance;
+            if (MyRiskBase == RiskBase.BaseMargin) RiskBaseAmount = Account.FreeMargin;
+            if (MyRiskBase == RiskBase.BaseFixedBalance) RiskBaseAmount = MyBaseFixedBalance;
+
+            if (MyStopLossMode == StopLossMode.SL_Auto_ADR)
+            {
+                double moneyrisk = RiskBaseAmount * (MaxRiskPerTrade / 100);
+                double sl_double = Math.Round(_adrOverall / ADR_SL, 0) * Symbol.PipSize;
+                _lotSize = Math.Round(Symbol.VolumeInUnitsToQuantity(moneyrisk / ((sl_double * Symbol.TickValue) / Symbol.TickSize)), 2);
+            }
+
+            if (MyStopLossMode == StopLossMode.SL_Fixed || MyStopLossMode == StopLossMode.SL_None)
+            {
+                double moneyrisk = RiskBaseAmount * (MaxRiskPerTrade / 100);
+                double sl_double = DefaultStopLoss * Symbol.PipSize;
+                _lotSize = Math.Round(Symbol.VolumeInUnitsToQuantity(moneyrisk / ((sl_double * Symbol.TickValue) / Symbol.TickSize)), 2);
+                _lotSize = Symbol.QuantityToVolumeInUnits(_lotSize);
+            }
+
+            if (_lotSize < Symbol.VolumeInUnitsMin)
+                return Symbol.VolumeInUnitsMin;
+
+            return _lotSize;
+        }
+        #endregion
+
+        #region ADR Calculations
+        private void CalculateADR()
+        {
+            double sum = 0;
+
+            for (int i = 1; i <= ADRPeriod; i++)
+            {
+                double dailyRange = (_dailyBars.HighPrices.Last(i) - _dailyBars.LowPrices.Last(i)) / Symbol.PipSize;
+                sum += dailyRange;
+            }
+
+            _adrOverall = Math.Round(sum / ADRPeriod, 0);
+            _adrCurrent = Math.Round((_dailyBars.HighPrices.LastValue - _dailyBars.LowPrices.LastValue) / Symbol.PipSize, 0);
+            _adrPercent = Math.Round((1 - Math.Abs(_adrCurrent - _adrOverall) / _adrOverall) * 100, 0);
+        }
+        #endregion
+
+        #region Swing Points Calculations
+        private void CalculateSwingPoints()
+        {
+            double highPrice = Bars.HighPrices.LastValue;
+            double lowPrice = Bars.LowPrices.LastValue;
+
+
+            if (_isUpSwing)
+            {
+                //if (highPrice > _lastSwingHigh) _lastSwingHigh = highPrice;
+
+                if (lowPrice > _highestLow)
+                {
+                    _highestLow = lowPrice;
+                    if (highPrice > _highestHigh) _highestHigh = highPrice;
+                }
+                if (highPrice < _highestLow)
+                {
+                    _isUpSwing = false;
+                    _lowestHigh = highPrice;
+                    if (_highestHigh > _lastSwingHigh) _lastSwingHigh = _highestHigh;
+                    _highestHigh = 0.00001;
+
+                }
+            }
+            else
+            {
+                //if (lowPrice < _lastSwingLow) _lastSwingLow = lowPrice;
+                if (highPrice < _lowestHigh)
+                {
+                    _lowestHigh = highPrice;
+                    if (lowPrice < _lowestLow) _lowestLow = lowPrice;
+
+                }
+                if (lowPrice > _lowestHigh)
+                {
+                    _isUpSwing = true;
+                    _highestLow = lowPrice;
+                    if (_lowestLow < _lastSwingLow) _lastSwingLow = _lowestLow;
+                    _lowestLow = 1000000;
+
+                }
+            }
+        }
+        #endregion
+
+        #region Digits To Pips
+        public double DigitsToPips(double _digits)
+        {
+            return Math.Round(_digits / Symbol.PipSize, 1);
+        }
+        #endregion
+
+        #region Pips To Digits
+        public double PipsToDigits(double _pips)
+        {
+            return Math.Round(_pips * Symbol.PipSize, Symbol.Digits);
+        }
+        #endregion
+
+        #region Errors
+        private void GetError(string error)
+        {
+            //  Print the error to the log
+            switch (error)
+            {
+                case "ErrorCode.BadVolume":
+                    Print("Invalid Volume amount");
+                    break;
+                case "ErrorCode.TechnicalError":
+                    Print("Error. Confirm that the trade command parameters are valid");
+                    break;
+                case "ErrorCode.NoMoney":
+                    Print("Not enough money to trade.");
+                    break;
+                case "ErrorCode.Disconnected":
+                    Print("The server is disconnected.");
+                    break;
+                case "ErrorCode.MarketClosed":
+                    Print("The market is closed.");
+                    break;
+                case "ErrorCode.EntityNotFound":
+                    Print("Position not found");
+                    break;
+                case "ErrorCode.Timeout":
+                    Print("Operation timed out");
+                    break;
+                case "ErrorCode.UnknownSymbol":
+                    Print("Unknown symbol.");
+                    break;
+                case "ErrorCode.InvalidStopLossTakeProfit":
+                    Print("The invalid Stop Loss or Take Profit.");
+                    break;
+                case "ErrorCode.InvalidRequest":
+                    Print("The invalid request.");
+                    break;
+            }
+        }
+        #endregion
+
         #endregion
 
         #endregion
