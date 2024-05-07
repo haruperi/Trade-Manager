@@ -377,7 +377,7 @@ namespace cAlgo.Robots
         #endregion
         protected override void OnTick()
         {
-
+            CalculateADR();
         }
 
         protected override void OnStop()
@@ -516,6 +516,54 @@ namespace cAlgo.Robots
         }
         #endregion
 
+        #region Evaluate Exit
+        private void EvaluateExit()
+        {
+            _signalExit = 0;
+
+            double totalBuyPips = 0;
+            double totalSellPips = 0;
+
+            if (_totalOpenBuy > 0)
+            {
+                foreach (var position in Positions)
+                {
+                    if (position.SymbolName != SymbolName) continue;
+                    if (position.Label != OrderComment) continue;
+                    if (position.TradeType != TradeType.Buy) continue;
+                    totalBuyPips += position.Pips;
+                }
+            }
+
+            if (_totalOpenSell > 0)
+            {
+                foreach (var position in Positions)
+                {
+                    if (position.SymbolName != SymbolName) continue;
+                    if (position.Label != OrderComment) continue;
+                    if (position.TradeType != TradeType.Sell) continue;
+                    totalSellPips += position.Pips;
+                }
+            }
+
+            if (BreakEvenLosing)
+            {
+                if (_totalOpenBuy > 1 && totalBuyPips > _totalOpenBuy) _signalExit = 1;
+                if (_totalOpenSell > 1 && totalSellPips > _totalOpenSell) _signalExit = -1;
+            }
+
+            if (IsCostAveTakeProfit)
+            {
+                if (MyTakeProfitMode == TakeProfitMode.TP_Fixed && totalBuyPips > DefaultTakeProfit + _totalOpenBuy) _signalExit = 1;
+                if (MyTakeProfitMode == TakeProfitMode.TP_Auto_ADR && totalBuyPips > _adrOverall / ADR_SL + _totalOpenBuy) _signalExit = 1;
+                if (MyTakeProfitMode == TakeProfitMode.TP_Fixed && totalSellPips > DefaultTakeProfit + _totalOpenSell) _signalExit = -1;
+                if (MyTakeProfitMode == TakeProfitMode.TP_Auto_ADR && totalSellPips > _adrOverall / ADR_SL + _totalOpenSell) _signalExit = -1;
+            }
+
+            if (IsStopOnEquityTarget && Account.Equity > EquityTarget) _signalExit = 2;
+        }
+        #endregion
+
         #region Evaluate Entry
         private void EvaluateEntry()
         {
@@ -532,21 +580,6 @@ namespace cAlgo.Robots
                 {
                     if (_breakoutSignal == 1) _signalEntry = 1;
                     if (_breakoutSignal == 0) _signalEntry = -1;
-                    /*
-                    if (_breakoutSignal == 1)
-                    {
-                        double volume = Symbol.NormalizeVolumeInUnits(Symbol.QuantityToVolumeInUnits(DefaultLotSize));
-
-                        var position = ExecuteMarketOrder(TradeType.Buy, SymbolName, volume, "SupportResistanceBot", DefaultStopLoss, DefaultTakeProfit);
-                    }
-
-                    if (_breakoutSignal == 0)
-                    {
-                        double volume = Symbol.NormalizeVolumeInUnits(Symbol.QuantityToVolumeInUnits(DefaultLotSize));
-
-                        var position = ExecuteMarketOrder(TradeType.Sell, SymbolName, volume, "SupportResistanceBot", DefaultStopLoss, DefaultTakeProfit);
-                    }
-                    */
                 }
             }
 
@@ -571,7 +604,7 @@ namespace cAlgo.Robots
             if (MyTakeProfitMode == TakeProfitMode.TP_None) TakeProfit = 0;
             if (MyTakeProfitMode == TakeProfitMode.TP_Fixed) TakeProfit = DefaultTakeProfit;
             if (MyTakeProfitMode == TakeProfitMode.TP_Auto_RRR) TakeProfit = Math.Round(StopLoss * RiskRewardRatio + CommissionsPips, 0);
-            if (MyTakeProfitMode == TakeProfitMode.TP_Auto_ADR) TakeProfit = Math.Round(_adrOverall / StopLoss + CommissionsPips, 0);
+            if (MyTakeProfitMode == TakeProfitMode.TP_Auto_ADR) TakeProfit = Math.Round(_adrOverall / ADR_SL + CommissionsPips, 0);
 
             if (MyPositionSizeMode == PositionSizeMode.Risk_Fixed) _volumeInUnits = Symbol.QuantityToVolumeInUnits(DefaultLotSize);
             if (MyPositionSizeMode == PositionSizeMode.Risk_Auto) _volumeInUnits = LotSizeCalculate();
@@ -581,11 +614,10 @@ namespace cAlgo.Robots
 
             if (_signalEntry == 1 && _totalOpenOrders <= MaxPositions && _totalOpenBuy <= MaxBuyPositions)
             {
-                var result = ExecuteMarketOrder(TradeType.Buy, SymbolName, _volumeInUnits, OrderComment, StopLoss, TakeProfit);
-                /*
+                
                 if (_totalOpenBuy > 0 && AutoTradeManagement)
                 {
-                    if (Symbol.Ask < _nextBuyCostAveLevel)
+                    if (Symbol.Ask < _nextBuyCostAveLevel || Symbol.Ask > _nextBuyPyAddLevel)
                     {
                         var result = ExecuteMarketOrder(TradeType.Buy, SymbolName, _volumeInUnits, OrderComment, StopLoss, TakeProfit);
                         if (result.Error != null) GetError(result.Error.ToString());
@@ -614,17 +646,16 @@ namespace cAlgo.Robots
                         _nextBuyPyAddLevel = Symbol.Ask + PipsToDigits(PyramidDistance);
                     }
                 }
-                */
+                
 
             }
 
             if (_signalEntry == -1 && _totalOpenOrders <= MaxPositions && _totalOpenSell <= MaxSellPositions)
             {
-                var result = ExecuteMarketOrder(TradeType.Sell, SymbolName, _volumeInUnits, OrderComment, StopLoss, TakeProfit);
-                /*
+                
                 if (_totalOpenSell > 0 && AutoTradeManagement)
                 {
-                    if (Symbol.Bid > _nextSellCostAveLevel)
+                    if (Symbol.Bid > _nextSellCostAveLevel || Symbol.Bid < _nextSellPyrAddLevel)
                     {
                         var result = ExecuteMarketOrder(TradeType.Sell, SymbolName, _volumeInUnits, OrderComment, StopLoss, TakeProfit);
                         if (result.Error != null) GetError(result.Error.ToString());
@@ -648,7 +679,7 @@ namespace cAlgo.Robots
                         _nextSellPyrAddLevel = Symbol.Bid - PipsToDigits(PyramidDistance);
                     }
                 }
-                */
+                
             }
 
 
