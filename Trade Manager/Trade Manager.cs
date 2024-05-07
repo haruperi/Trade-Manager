@@ -387,6 +387,8 @@ namespace cAlgo.Robots
 
             CheckSpread();
 
+            ScanOrders();
+
             int index = Bars.ClosePrices.Count - 1;
             int signal = SupportResistanceSignal(index);
 
@@ -485,6 +487,32 @@ namespace cAlgo.Robots
             if (Math.Round(Symbol.Spread / Symbol.PipSize, 2) <= MaxSpread) _isSpreadOK = true;
         }
 
+        #endregion
+
+        #region Scan Orders
+        private void ScanOrders()
+        {
+            foreach (var position in Positions)
+            {
+                if (position.SymbolName != SymbolName) continue;
+                if (position.Label != OrderComment) continue;
+                if (position.TradeType == TradeType.Buy) _totalOpenBuy++;
+                if (position.TradeType == TradeType.Sell) _totalOpenSell++;
+
+                _totalOpenOrders++;
+            }
+
+            foreach (var order in PendingOrders)
+            {
+                if (order.SymbolName != SymbolName) continue;
+                if (order.Label != OrderComment) continue;
+                if (order.TradeType == TradeType.Buy) _totalPendingBuy++;
+                if (order.TradeType == TradeType.Sell) _totalPendingSell++;
+
+                _totalPendingOrders++;
+            }
+
+        }
         #endregion
 
         #endregion
