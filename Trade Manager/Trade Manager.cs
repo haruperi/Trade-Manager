@@ -12,30 +12,342 @@ namespace cAlgo.Robots
     [Robot(AccessRights = AccessRights.None)]
     public class TradeManager : Robot
     {
-        [Parameter("Lot Size", Group = "Volume", DefaultValue = 0.01, MinValue = 0.00001, MaxValue = 100, Step = 0.00001)]
-        public double LotSize { get; set; }
+        #region Identity
 
-        [Parameter("Stop Loss (pips)", Group = "Risk Management", DefaultValue = 50, MinValue = 1)]
-        public int StopLossInPips { get; set; }
+        public const string NAME = "Ultimate Trader Manager";
 
-        [Parameter("Take Profit (pips)", Group = "Risk Management", DefaultValue = 50, MinValue = 1)]
-        public int TakeProfitInPips { get; set; }
+        public const string VERSION = "1.0";
 
-        [Parameter("BreakoutPeriod", DefaultValue = 10, MinValue = 3)]
+        #endregion
+
+        #region Enum
+        public enum OpenTradeType
+        {
+            All,
+            Buy,
+            Sell
+        }
+
+        public enum TradingMode
+        {
+            Auto,
+            Manual,
+            Both
+        }
+
+        public enum AutoStrategyName
+        {
+            Trend_MA,
+            HHLL,
+            RSIMeanReversion,
+            BreakoutTrading
+        }
+
+        public enum RiskBase
+        {
+            BaseEquity,
+            BaseBalance,
+            BaseMargin,
+            BaseFixedBalance
+        };
+
+        public enum PositionSizeMode
+        {
+            Risk_Fixed,
+            Risk_Auto,
+        };
+
+        public enum StopLossMode
+        {
+            SL_None,
+            SL_Fixed,
+            SL_Auto_ADR,
+        };
+
+        public enum TakeProfitMode
+        {
+            TP_None,
+            TP_Fixed,
+            TP_Auto_ADR,
+            TP_Auto_RRR,
+            TP_Multi
+        };
+
+        public enum TrailingMode
+        {
+            TL_None,
+            TL_Fixed,
+            TL_Fixed_BE,
+            TL_Psar,
+            TL_Pyramid,
+        };
+        #endregion
+
+        #region Parameters of CBot
+
+        #region Identity
+        [Parameter(NAME + " " + VERSION, Group = "IDENTITY", DefaultValue = "https://haruperi.ltd/trading/")]
+        public string ProductInfo { get; set; }
+
+        [Parameter("Preset information", Group = "IDENTITY", DefaultValue = "XAUUSD Range5 | 01.01.2024 to 29.04.2024 | $1000")]
+        public string PresetInfo { get; set; }
+        #endregion
+
+        #region Strategy
+
+        [Parameter("Open Trade Type", Group = "STRATEGY", DefaultValue = OpenTradeType.All)]
+        public OpenTradeType MyOpenTradeType { get; set; }
+
+        [Parameter("Trading Mode", Group = "STRATEGY", DefaultValue = TradingMode.Both)]
+        public TradingMode MyTradingMode { get; set; }
+
+        [Parameter("Auto Strategy Name", Group = "STRATEGY", DefaultValue = AutoStrategyName.Trend_MA)]
+        public AutoStrategyName MyAutoStrategyName { get; set; }
+        #endregion
+
+        #region Trading Hours
+        [Parameter("Use Trading Hours", Group = "TRADING HOURS", DefaultValue = true)]
+        public bool UseTradingHours { get; set; }
+
+        [Parameter("Starting Hour", Group = "TRADING HOURS", DefaultValue = 02)]
+        public int TradingHourStart { get; set; }
+
+        [Parameter("Ending Hour", Group = "TRADING HOURS", DefaultValue = 23)]
+        public int TradingHourEnd { get; set; }
+        #endregion
+
+        #region Risk Management Settings
+        [Parameter("Position size mode", Group = "RISK MANAGEMENT", DefaultValue = PositionSizeMode.Risk_Fixed)]
+        public PositionSizeMode MyPositionSizeMode { get; set; }
+
+        [Parameter("Default Lot Size", Group = "RISK MANAGEMENT", DefaultValue = 0.01, MinValue = 0.01, Step = 0.01)]
+        public double DefaultLotSize { get; set; }
+
+        [Parameter("Cal Risk From ", Group = "RISK MANAGEMENT", DefaultValue = RiskBase.BaseBalance)]
+        public RiskBase MyRiskBase { get; set; }
+
+        [Parameter("Base Fixed Balance ", Group = "RISK MANAGEMENT", DefaultValue = 100)]
+        public double MyBaseFixedBalance { get; set; }
+
+        [Parameter("Max Risk % Per Trade", Group = "RISK MANAGEMENT", DefaultValue = 1, MinValue = 0.1, Step = 0.01)]
+        public double MaxRiskPerTrade { get; set; }
+
+        [Parameter("Risk Reward Ratio - 1:", Group = "RISK MANAGEMENT", DefaultValue = 1, MinValue = 0.1, Step = 0.01)]
+        public double RiskRewardRatio { get; set; }
+
+        [Parameter("Max Positions", Group = "RISK MANAGEMENT", DefaultValue = 1, MinValue = 1, Step = 1)]
+        public int MaxPositions { get; set; }
+
+        [Parameter("Max Buy Positions", Group = "RISK MANAGEMENT", DefaultValue = 1, MinValue = 1, Step = 1)]
+        public int MaxBuyPositions { get; set; }
+
+        [Parameter("Max Sell Positions", Group = "RISK MANAGEMENT", DefaultValue = 1, MinValue = 1, Step = 1)]
+        public int MaxSellPositions { get; set; }
+
+        [Parameter("Stop Loss Mode", Group = "RISK MANAGEMENT", DefaultValue = StopLossMode.SL_Fixed)]
+        public StopLossMode MyStopLossMode { get; set; }
+
+        [Parameter("Default StopLoss ", Group = "RISK MANAGEMENT", DefaultValue = 20, MinValue = 5, Step = 1)]
+        public double DefaultStopLoss { get; set; }
+
+        [Parameter("Use Fake StopLoss ", Group = "RISK MANAGEMENT", DefaultValue = true)]
+        public bool UseFakeStopLoss { get; set; }
+
+        [Parameter("Fake StopLoss ", Group = "RISK MANAGEMENT", DefaultValue = 200, MinValue = 100, Step = 5)]
+        public double FakeStopLoss { get; set; }
+
+        [Parameter("Take Profit Mode", Group = "RISK MANAGEMENT", DefaultValue = TakeProfitMode.TP_Fixed)]
+        public TakeProfitMode MyTakeProfitMode { get; set; }
+
+        [Parameter("Default Take Profit", Group = "RISK MANAGEMENT", DefaultValue = 21, MinValue = 5, Step = 1)]
+        public double DefaultTakeProfit { get; set; }
+        #endregion
+
+        #region Trade Management
+        [Parameter("Use Auto Trade Management", Group = "TRADE MANAGEMENT", DefaultValue = false)]
+        public bool AutoTradeManagement { get; set; }
+
+        [Parameter("Split Trades", Group = "TRADE MANAGEMENT", DefaultValue = true)]
+        public bool SplitTrades { get; set; }
+
+        [Parameter("How Many Split Trades", Group = "TRADE MANAGEMENT", DefaultValue = 2)]
+        public double NumOfSplitTrades { get; set; }
+
+        [Parameter("Use Pyramids for TP", Group = "TRADE MANAGEMENT", DefaultValue = false)]
+        public bool DoPyramidsTrading { get; set; }
+
+        [Parameter("Stop Bot On Equity Target", Group = "TRADE MANAGEMENT", DefaultValue = false)]
+        public bool IsStopOnEquityTarget { get; set; }
+
+        [Parameter("Equity Target", Group = "TRADE MANAGEMENT", DefaultValue = 100000)]
+        public double EquityTarget { get; set; }
+
+        [Parameter("Cost Ave Distance", Group = "TRADE MANAGEMENT", DefaultValue = 20)]
+        public double CostAveDistance { get; set; }
+
+        [Parameter("Pyramid Distance", Group = "TRADE MANAGEMENT", DefaultValue = 20)]
+        public double PyramidDistance { get; set; }
+
+        [Parameter("Cost Ave Distance Multiplier", Group = "TRADE MANAGEMENT", DefaultValue = 2)]
+        public double CostAveMultiplier { get; set; }
+
+        [Parameter("Pyramid Lot Divisor", Group = "TRADE MANAGEMENT", DefaultValue = 2)]
+        public double PyramidLotDivisor { get; set; }
+
+        [Parameter("Pyramid Stop Loss", Group = "TRADE MANAGEMENT", DefaultValue = 5)]
+        public double PyramidStopLoss { get; set; }
+
+        [Parameter("Use Trailing Stop ", Group = "TRADE MANAGEMENT", DefaultValue = TrailingMode.TL_Fixed_BE)]
+        public TrailingMode MyTrailingMode { get; set; }
+
+        [Parameter("Trail After (Pips) ", Group = "TRADE MANAGEMENT", DefaultValue = 10, MinValue = 1)]
+        public double WhenToTrail { get; set; }
+
+        [Parameter("Break-Even Losing Trades", Group = "TRADE MANAGEMENT", DefaultValue = false)]
+        public bool BreakEvenLosing { get; set; }
+
+        [Parameter("Cost Ave Take Profit", Group = "TRADE MANAGEMENT", DefaultValue = false)]
+        public bool IsCostAveTakeProfit { get; set; }
+
+        [Parameter("Commissions pips", Group = "TRADE MANAGEMENT", DefaultValue = 1, MinValue = 1)]
+        public int CommissionsPips { get; set; }
+
+        [Parameter("Pending Order Distance (pips)", Group = "TRADE MANAGEMENT", DefaultValue = 2, MinValue = 1)]
+        public double PendingOrderDistance { get; set; }
+
+
+        #endregion
+
+        #region  Indicator Settings
+        [Parameter("ADRPeriod", Group = "INDICATOR SETTINGS", DefaultValue = 10)]
+        public int ADRPeriod { get; set; }
+
+        [Parameter("ADR Divisor SL", Group = "INDICATOR SETTINGS", DefaultValue = 3)]
+        public double ADR_SL { get; set; }
+
+        [Parameter("WPRPeriod", Group = "INDICATOR SETTINGS", DefaultValue = 5)]
+        public int WPRPeriod { get; set; }
+
+        [Parameter("RSI Period", Group = "INDICATOR SETTINGS", DefaultValue = 14)]
+        public int RSIPeriod { get; set; }
+
+        [Parameter("RSI OSLevel", Group = "INDICATOR SETTINGS", DefaultValue = 30)]
+        public int OSLevel { get; set; }
+
+        [Parameter("RSI OBLevel", Group = "INDICATOR SETTINGS", DefaultValue = 70)]
+        public int OBLevel { get; set; }
+
+        [Parameter("Breakout Period", DefaultValue = 10, MinValue = 3)]
         public int BreakoutPeriod { get; set; }
 
-        [Parameter("Buy", Group = "Colors", DefaultValue = "DodgerBlue")]
+        [Parameter("Min Acceleration Factor", Group = "Parabolic SAR", DefaultValue = 0.02, MinValue = 0, Step = 0.01)]
+        public double MinAccFactor { get; set; }
+
+        [Parameter("Max Acceleration Factor", Group = "Parabolic SAR", DefaultValue = 0.2, MinValue = 0, Step = 0.01)]
+        public double MaxAccFactor { get; set; }
+        #endregion
+
+        #region EA Settings
+        [Parameter("Max Slippage ", Group = "EA SETTINGS", DefaultValue = 1, MinValue = 1)]
+        public int MaxSlippage { get; set; }
+
+        [Parameter("Max Spread Allowed ", Group = "EA SETTINGS", DefaultValue = 3, MinValue = 1, Step = 0.1)]
+        public double MaxSpread { get; set; }
+
+        [Parameter("Bot Label", Group = "EA SETTINGS", DefaultValue = "RH Bot - ")]
+        public string BotLabel { get; set; }
+        #endregion
+
+        #region Notification Settings
+
+        [Parameter("Popup Notification", Group = "NOTIFICATION SETTINGS", DefaultValue = false)]
+        public bool PopupNotification { get; set; }
+
+        [Parameter("Sound Notification", Group = "NOTIFICATION SETTINGS", DefaultValue = false)]
+        public bool SoundNotification { get; set; }
+
+        [Parameter("Email Notification", Group = "NOTIFICATION SETTINGS", DefaultValue = false)]
+        public bool EmailNotification { get; set; }
+
+        [Parameter("Email address", Group = "NOTIFICATION SETTINGS", DefaultValue = "notify@testmail.com")]
+        public string EmailAddress { get; set; }
+
+        [Parameter("Telegram Notification", Group = "NOTIFICATION SETTINGS", DefaultValue = false)]
+        public bool TelegramEnabled { get; set; }
+
+        [Parameter("API Token", Group = "NOTIFICATION SETTINGS", DefaultValue = "")]
+        public string TelegramToken { get; set; }
+
+        [Parameter("Chat IDs (separate by comma)", Group = "NOTIFICATION SETTINGS", DefaultValue = "")]
+        public string TelegramChatIDs { get; set; }
+        #endregion
+
+        #region Display Settings
+        [Parameter("Buy", Group = "DISPLAY SETTINGS", DefaultValue = "#5335E5")]
         public Color BuyColor { get; set; }
 
-        [Parameter("Sell", Group = "Colors", DefaultValue = "Red")]
+        [Parameter("Sell", Group = "DISPLAY SETTINGS", DefaultValue = "#FC1D85")]
         public Color SellColor { get; set; }
+
+        [Parameter("LineStyle", Group = "DISPLAY SETTINGS", DefaultValue = LineStyle.Solid)]
+        public LineStyle HLineStyle { get; set; }
+
+        [Parameter("Thickness", Group = "DISPLAY SETTINGS", DefaultValue = 1)]
+        public int HLineThickness { get; set; }
+
+        [Parameter("Color", Group = "DISPLAY SETTINGS", DefaultValue = "DarkGoldenrod")]
+        public string HLineColor { get; set; }
+
+        [Parameter("Transparency", Group = "DISPLAY SETTINGS", DefaultValue = 60, MinValue = 1, MaxValue = 100)]
+        public int HLineTransparency { get; set; }
+
+        [Parameter("Horizontal Alignment", Group = "DISPLAY SETTINGS", DefaultValue = HorizontalAlignment.Left)]
+        public HorizontalAlignment PanelHorizontalAlignment { get; set; }
+
+        [Parameter("Vertical Alignment", Group = "DISPLAY SETTINGS", DefaultValue = VerticalAlignment.Top)]
+        public VerticalAlignment PanelVerticalAlignment { get; set; }
+
+        [Parameter("Text Color", Group = "DISPLAY SETTINGS", DefaultValue = "Snow")]
+        public string ColorText { get; set; }
+
+        [Parameter("Show How To Use", Group = "DISPLAY SETTINGS", DefaultValue = true)]
+        public bool ShowHowToUse { get; set; }
+        #endregion
+
+        #region Global variables
+
+        private StackPanel contentPanel;
+        private TextBlock ShowHeader, ShowADR, ShowCurrentADR, ShowADRPercent, ShowDrawdown, ShowLotsInfo, ShowTradesInfo, ShowTargetInfo, ShowSpread;
+        private Grid PanelGrid;
+        private ToggleButton buystoplimitbutton, sellstoplimitbutton;
+        private Color hColour;
+        private ChartHorizontalLine HorizontalLine;
+
+        private bool _isPreChecksOk, _isSpreadOK, _isOperatingHours, _isUpSwing, _rsiBullishTrigger, _rsiBearishTrigger, buySLbool, sellSLbool, _isRecoveryTrade, _isPyramidTrade;
+        private int _totalOpenOrders, _totalOpenBuy, _totalOpenSell, _totalPendingOrders, _totalPendingBuy, _totalPendingSell, _signalEntry, _signalExit, _breakoutSignal;
+        private double _gridDistanceBuy, _gridDistanceSell, _atr, _adrCurrent, _adrOverall, _adrPercent, _nextBuyCostAveLevel, _nextSellCostAveLevel,
+                        _nextBuyPyAddLevel, _nextSellPyrAddLevel, _PyramidSellStopLoss, _PyramidBuyStopLoss, WhenToTrailPrice,
+                        _highestHigh, _lowestHigh, _highestLow, _lowestLow, _lastSwingHigh, _lastSwingLow, _breakoutBuy, _breakoutSell;
+        double[] HTBarHigh, HTBarLow, HTBarClose, HTBarOpen, LTBarHigh, LTBarLow, LTBarClose, LTBarOpen = new double[5];
+        int HTOldNumBars = 0, LTOldNumBars = 0;
+        private string OrderComment, _recoverySTR, _pyramidSTR;
+
+        private RelativeStrengthIndex _rsi;
+        private WilliamsPctR _williamsPctR;
+        private ParabolicSAR parabolicSAR;
+        private AverageTrueRange _averageTrueRange;
+        private MovingAverage _fastMA, _slowMA, _ltffastMA, _ltfslowMA, _htffastMA, _htfslowMA;
+
+        private Bars _dailyBars;
 
         private const string Sign = "RBO";
         private TrendLevel LastBreakOutBuy { get; set; }
         private TrendLevel LastBreakOutSell { get; set; }
         private int _lastIndex { get; set; }
 
-        private bool isPositionOpen = false;
+        #endregion
+
+        #endregion
 
         protected override void OnStart()
         {
@@ -61,16 +373,16 @@ namespace cAlgo.Robots
 
             if (signal == 1)
             {
-                double volume = Symbol.NormalizeVolumeInUnits(Symbol.QuantityToVolumeInUnits(LotSize));
+                double volume = Symbol.NormalizeVolumeInUnits(Symbol.QuantityToVolumeInUnits(DefaultLotSize));
 
-                var position = ExecuteMarketOrder(TradeType.Buy, SymbolName, volume, "SupportResistanceBot", StopLossInPips, TakeProfitInPips);
+                var position = ExecuteMarketOrder(TradeType.Buy, SymbolName, volume, "SupportResistanceBot", DefaultStopLoss, DefaultTakeProfit);
             }
 
             if (signal == 0)
             {
-                double volume = Symbol.NormalizeVolumeInUnits(Symbol.QuantityToVolumeInUnits(LotSize));
+                double volume = Symbol.NormalizeVolumeInUnits(Symbol.QuantityToVolumeInUnits(DefaultLotSize));
 
-                var position = ExecuteMarketOrder(TradeType.Sell, SymbolName, volume, "SupportResistanceBot", StopLossInPips, TakeProfitInPips);
+                var position = ExecuteMarketOrder(TradeType.Sell, SymbolName, volume, "SupportResistanceBot", DefaultStopLoss, DefaultTakeProfit);
             }
         }
 
