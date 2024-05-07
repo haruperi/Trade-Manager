@@ -608,6 +608,49 @@ namespace cAlgo.Robots
         }
         #endregion
 
+        #region Execute Exit
+        private void ExecuteExit()
+        {
+
+            if (_signalExit == 0) return;
+
+            if (_signalExit == 2)
+            {
+                foreach (var position in Positions)
+                    ClosePositionAsync(position);
+
+                Stop();
+            }
+
+            if (_signalExit == 1)
+            {
+                foreach (var position in Positions)
+                {
+                    if (position.SymbolName != SymbolName) continue;
+                    if (position.Label != OrderComment) continue;
+                    if (position.TradeType != TradeType.Buy) continue;
+                    ClosePositionAsync(position);
+                }
+
+                _nextBuyCostAveLevel = 0;
+            }
+
+            if (_signalExit == -1)
+            {
+                foreach (var position in Positions)
+                {
+                    if (position.SymbolName != SymbolName) continue;
+                    if (position.Label != OrderComment) continue;
+                    if (position.TradeType != TradeType.Sell) continue;
+                    ClosePositionAsync(position);
+                }
+
+                _nextSellCostAveLevel = 0;
+            }
+
+        }
+        #endregion
+
         #region Evaluate Entry
         private void EvaluateEntry()
         {
