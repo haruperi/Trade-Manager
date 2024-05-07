@@ -21,8 +21,8 @@ namespace cAlgo.Robots
         [Parameter("Take Profit (pips)", Group = "Risk Management", DefaultValue = 50, MinValue = 1)]
         public int TakeProfitInPips { get; set; }
 
-        [Parameter("Period", DefaultValue = 10, MinValue = 3)]
-        public int Period { get; set; }
+        [Parameter("BreakoutPeriod", DefaultValue = 10, MinValue = 3)]
+        public int BreakoutPeriod { get; set; }
 
         [Parameter("Buy", Group = "Colors", DefaultValue = "DodgerBlue")]
         public Color BuyColor { get; set; }
@@ -30,10 +30,10 @@ namespace cAlgo.Robots
         [Parameter("Sell", Group = "Colors", DefaultValue = "Red")]
         public Color SellColor { get; set; }
 
-        private const string Sign = "TBO";
+        private const string Sign = "RBO";
         private TrendLevel LastBreakOutBuy { get; set; }
         private TrendLevel LastBreakOutSell { get; set; }
-        private int LastIndex { get; set; }
+        private int _lastIndex { get; set; }
 
         private bool isPositionOpen = false;
 
@@ -41,44 +41,51 @@ namespace cAlgo.Robots
         {
             LastBreakOutBuy = null;
             LastBreakOutSell = null;
-            LastIndex = -1;
+            _lastIndex = -1;
+        }
+
+        protected override void OnTick()
+        {
+
+        }
+
+        protected override void OnStop()
+        {
+
         }
 
         protected override void OnBar()
         {
-            int index = MarketSeries.Close.Count - 1;
+            int index = Bars.ClosePrices.Count - 1;
             int signal = SupportResistanceSignal(index);
 
-            if (!isPositionOpen && signal != -1)
+            if (signal == 1)
             {
-                TradeType tradeType = (signal == 0) ? TradeType.Buy : TradeType.Sell;
-
                 double volume = Symbol.NormalizeVolumeInUnits(Symbol.QuantityToVolumeInUnits(LotSize));
 
-                var position = ExecuteMarketOrder(tradeType, Symbol, volume, "SupportResistanceBot", StopLossInPips, TakeProfitInPips);
+                var position = ExecuteMarketOrder(TradeType.Buy, SymbolName, volume, "SupportResistanceBot", StopLossInPips, TakeProfitInPips);
+            }
 
-                if (position != null)
-                {
-                    isPositionOpen = true;
-                }
+            if (signal == 0)
+            {
+                double volume = Symbol.NormalizeVolumeInUnits(Symbol.QuantityToVolumeInUnits(LotSize));
+
+                var position = ExecuteMarketOrder(TradeType.Sell, SymbolName, volume, "SupportResistanceBot", StopLossInPips, TakeProfitInPips);
             }
         }
 
-        protected override void OnPositionClosed(Position position)
-        {
-            isPositionOpen = false;
-        }
+        
 
         private int SupportResistanceSignal(int index)
         {
-            if (index < Period) return -1;
+            if (index < BreakoutPeriod) return -1;
 
-            int A = index - Period;
+            int A = index - BreakoutPeriod;
             int B = index;
 
             if (LastBreakOutBuy == null)
             {
-                if (ReadyResistance(index, Period))
+                if (ReadyResistance(index, BreakoutPeriod))
                     LastBreakOutBuy = new TrendLevel
                     {
                         Name = string.Format("{0}-Buy-{1}", Sign, A),
@@ -90,7 +97,7 @@ namespace cAlgo.Robots
 
             if (LastBreakOutSell == null)
             {
-                if (ReadySupport(index, Period))
+                if (ReadySupport(index, BreakoutPeriod))
                     LastBreakOutSell = new TrendLevel
                     {
                         Name = string.Format("{0}-Sell-{1}", Sign, A),
@@ -107,9 +114,9 @@ namespace cAlgo.Robots
 
             int signal = -1;
 
-            if (LastIndex != index)
+            if (_lastIndex != index)
             {
-                LastIndex = index;
+                _lastIndex = index;
                 signal = OnBarforindicator(index);
             }
 
