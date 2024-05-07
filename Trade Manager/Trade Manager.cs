@@ -349,13 +349,26 @@ namespace cAlgo.Robots
 
         #endregion
 
+        #region Standard event handlers
+
+        #region OnStart function
         protected override void OnStart()
         {
+            CheckPreChecks();
+
+            if (!_isPreChecksOk) Stop();
+
             LastBreakOutBuy = null;
             LastBreakOutSell = null;
             _lastIndex = -1;
+
+            _recoverySTR = "Recovery";
+            _pyramidSTR = "Pyramid";
+
+            OrderComment = BotLabel + MyAutoStrategyName.ToString();
         }
 
+        #endregion
         protected override void OnTick()
         {
 
@@ -368,6 +381,8 @@ namespace cAlgo.Robots
 
         protected override void OnBar()
         {
+            OnBarInitialization();
+
             int index = Bars.ClosePrices.Count - 1;
             int signal = SupportResistanceSignal(index);
 
@@ -385,6 +400,8 @@ namespace cAlgo.Robots
                 var position = ExecuteMarketOrder(TradeType.Sell, SymbolName, volume, "SupportResistanceBot", DefaultStopLoss, DefaultTakeProfit);
             }
         }
+
+        #endregion
 
 
         #region Custom Functions 
@@ -417,6 +434,27 @@ namespace cAlgo.Robots
             }
         }
 
+        #endregion
+
+        #region OnBar Initialization 
+        private void OnBarInitialization()
+        {
+            _isPreChecksOk = false;
+            _isSpreadOK = false;
+            _isOperatingHours = false;
+
+            _totalOpenOrders = 0;
+            _totalOpenBuy = 0;
+            _totalOpenSell = 0;
+            _totalPendingBuy = 0;
+            _totalPendingSell = 0;
+            _totalPendingOrders = 0;
+            _signalEntry = 0;
+            _signalExit = 0;
+
+            _isRecoveryTrade = false;
+            _isPyramidTrade = false;
+        }
         #endregion
 
         #endregion
