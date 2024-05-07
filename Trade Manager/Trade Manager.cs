@@ -516,6 +516,50 @@ namespace cAlgo.Robots
         }
         #endregion
 
+        #region Execute Trailing Stop
+        private void ExecuteTrailingStop()
+        {
+            if (MyTrailingMode == TrailingMode.TL_None) return;
+
+            if (MyTrailingMode == TrailingMode.TL_Fixed_BE)
+            {
+                foreach (var position in Positions)
+                {
+                    if (position.SymbolName != SymbolName) continue;
+                    if (position.Label != OrderComment) continue;
+                    if (position.Pips < DefaultStopLoss) continue;
+                    if (position.TradeType == TradeType.Buy && position.StopLoss == position.EntryPrice + PipsToDigits(1)) continue;
+                    if (position.TradeType == TradeType.Sell && position.StopLoss == position.EntryPrice - PipsToDigits(1)) continue;
+
+                    bool isProtected = position.StopLoss.HasValue;
+                    double newStopLoss = position.TradeType == TradeType.Buy ? position.EntryPrice + PipsToDigits(1) : position.EntryPrice - PipsToDigits(1);
+                    if (isProtected) ModifyPosition(position, newStopLoss, null);
+
+                }
+            }
+
+            if (MyTrailingMode == TrailingMode.TL_Psar)
+            {
+                double newStopLoss = parabolicSAR.Result.LastValue;
+
+                foreach (var position in Positions)
+                {
+                    if (position.SymbolName != SymbolName) continue;
+                    if (position.Label != OrderComment) continue;
+                    if (position.Pips < WhenToTrail) continue;
+
+                    bool isProtected = position.StopLoss.HasValue;
+
+                    if (isProtected) ModifyPosition(position, newStopLoss, null);
+
+                }
+            }
+
+
+
+        }
+        #endregion
+
         #region Evaluate Exit
         private void EvaluateExit()
         {
