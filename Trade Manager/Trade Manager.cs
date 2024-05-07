@@ -363,9 +363,7 @@ namespace cAlgo.Robots
             _adrCurrent = 0;
             _adrPercent = 0;
             _adrOverall = 0;
-
-
-            _breakoutSignal = 0;
+           
             LastBreakOutBuy = null;
             LastBreakOutSell = null;
             _lastIndex = -1;
@@ -397,26 +395,15 @@ namespace cAlgo.Robots
 
             ScanOrders();
 
+            // Strategy Specific 
+
+            // Breakout Strategy
+            int index = Bars.ClosePrices.Count - 1;
+            _breakoutSignal = SupportResistanceSignal(index);
+
             EvaluateEntry();
 
             ExecuteEntry();
-
-            int index = Bars.ClosePrices.Count - 1;
-            int signal = SupportResistanceSignal(index);
-
-            if (signal == 1)
-            {
-                double volume = Symbol.NormalizeVolumeInUnits(Symbol.QuantityToVolumeInUnits(DefaultLotSize));
-
-                var position = ExecuteMarketOrder(TradeType.Buy, SymbolName, volume, "SupportResistanceBot", DefaultStopLoss, DefaultTakeProfit);
-            }
-
-            if (signal == 0)
-            {
-                double volume = Symbol.NormalizeVolumeInUnits(Symbol.QuantityToVolumeInUnits(DefaultLotSize));
-
-                var position = ExecuteMarketOrder(TradeType.Sell, SymbolName, volume, "SupportResistanceBot", DefaultStopLoss, DefaultTakeProfit);
-            }
         }
 
         #endregion
@@ -468,6 +455,7 @@ namespace cAlgo.Robots
             _totalPendingSell = 0;
             _totalPendingOrders = 0;
 
+            _breakoutSignal = 0;
             _signalEntry = 0;
             _signalExit = 0;
 
@@ -543,7 +531,22 @@ namespace cAlgo.Robots
                 if (MyAutoStrategyName == AutoStrategyName.BreakoutTrading)
                 {
                     if (_breakoutSignal == 1) _signalEntry = 1;
-                    if (_breakoutSignal == -1) _signalEntry = -1;
+                    if (_breakoutSignal == 0) _signalEntry = -1;
+                    /*
+                    if (_breakoutSignal == 1)
+                    {
+                        double volume = Symbol.NormalizeVolumeInUnits(Symbol.QuantityToVolumeInUnits(DefaultLotSize));
+
+                        var position = ExecuteMarketOrder(TradeType.Buy, SymbolName, volume, "SupportResistanceBot", DefaultStopLoss, DefaultTakeProfit);
+                    }
+
+                    if (_breakoutSignal == 0)
+                    {
+                        double volume = Symbol.NormalizeVolumeInUnits(Symbol.QuantityToVolumeInUnits(DefaultLotSize));
+
+                        var position = ExecuteMarketOrder(TradeType.Sell, SymbolName, volume, "SupportResistanceBot", DefaultStopLoss, DefaultTakeProfit);
+                    }
+                    */
                 }
             }
 
@@ -576,8 +579,10 @@ namespace cAlgo.Robots
             if (UseFakeStopLoss && FakeStopLoss > 2 * _adrOverall) StopLoss = FakeStopLoss;
             if (UseFakeStopLoss && FakeStopLoss < 2 * _adrOverall) StopLoss = 2 * _adrOverall;
 
-            if (_signalEntry == 1 && _totalOpenBuy <= MaxPositions && _totalOpenBuy <= MaxBuyPositions)
+            if (_signalEntry == 1 && _totalOpenOrders <= MaxPositions && _totalOpenBuy <= MaxBuyPositions)
             {
+                var result = ExecuteMarketOrder(TradeType.Buy, SymbolName, _volumeInUnits, OrderComment, StopLoss, TakeProfit);
+                /*
                 if (_totalOpenBuy > 0 && AutoTradeManagement)
                 {
                     if (Symbol.Ask < _nextBuyCostAveLevel)
@@ -609,11 +614,14 @@ namespace cAlgo.Robots
                         _nextBuyPyAddLevel = Symbol.Ask + PipsToDigits(PyramidDistance);
                     }
                 }
+                */
 
             }
 
-            if (_signalEntry == -1 && _totalOpenSell <= MaxPositions && _totalOpenSell <= MaxSellPositions)
+            if (_signalEntry == -1 && _totalOpenOrders <= MaxPositions && _totalOpenSell <= MaxSellPositions)
             {
+                var result = ExecuteMarketOrder(TradeType.Sell, SymbolName, _volumeInUnits, OrderComment, StopLoss, TakeProfit);
+                /*
                 if (_totalOpenSell > 0 && AutoTradeManagement)
                 {
                     if (Symbol.Bid > _nextSellCostAveLevel)
@@ -640,6 +648,7 @@ namespace cAlgo.Robots
                         _nextSellPyrAddLevel = Symbol.Bid - PipsToDigits(PyramidDistance);
                     }
                 }
+                */
             }
 
 
