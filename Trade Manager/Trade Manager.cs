@@ -378,6 +378,14 @@ namespace cAlgo.Robots
         protected override void OnTick()
         {
             CalculateADR();
+
+            EvaluateExit();
+
+            ExecuteExit();
+
+            ScanOrders();
+
+            ExecuteTrailingStop();
         }
 
         protected override void OnStop()
@@ -706,12 +714,14 @@ namespace cAlgo.Robots
                 {
                     if (Symbol.Ask < _nextBuyCostAveLevel || Symbol.Ask > _nextBuyPyAddLevel)
                     {
+                        SetTradesToBreakeven(TradeType.Buy);
                         var result = ExecuteMarketOrder(TradeType.Buy, SymbolName, _volumeInUnits, OrderComment, StopLoss, TakeProfit);
                         if (result.Error != null) GetError(result.Error.ToString());
                         else
                         {
                             Print("Position with ID " + result.Position.Id + " was opened");
                             _nextBuyCostAveLevel = Symbol.Ask - PipsToDigits(CostAveDistance);
+                            _PyramidBuyStopLoss = result.Position.EntryPrice + PipsToDigits(CommissionsPips);
                             _nextBuyPyAddLevel = Symbol.Ask + PipsToDigits(PyramidDistance);
                         }
                     }
@@ -731,6 +741,7 @@ namespace cAlgo.Robots
                         Print("Position with ID " + result.Position.Id + " was opened");
                         _nextBuyCostAveLevel = Symbol.Ask - PipsToDigits(CostAveDistance);
                         _nextBuyPyAddLevel = Symbol.Ask + PipsToDigits(PyramidDistance);
+                        _PyramidBuyStopLoss = result.Position.EntryPrice + PipsToDigits(CommissionsPips);
                     }
                 }
                 
@@ -744,6 +755,7 @@ namespace cAlgo.Robots
                 {
                     if (Symbol.Bid > _nextSellCostAveLevel || Symbol.Bid < _nextSellPyrAddLevel)
                     {
+                        SetTradesToBreakeven(TradeType.Sell);
                         var result = ExecuteMarketOrder(TradeType.Sell, SymbolName, _volumeInUnits, OrderComment, StopLoss, TakeProfit);
                         if (result.Error != null) GetError(result.Error.ToString());
                         else
@@ -751,6 +763,7 @@ namespace cAlgo.Robots
                             Print("Position with ID " + result.Position.Id + " was opened");
                             _nextSellCostAveLevel = Symbol.Bid + PipsToDigits(CostAveDistance);
                             _nextSellPyrAddLevel = Symbol.Bid - PipsToDigits(PyramidDistance);
+                            _PyramidSellStopLoss = result.Position.EntryPrice - PipsToDigits(CommissionsPips);
                         }
                     }
                 }
@@ -764,6 +777,7 @@ namespace cAlgo.Robots
                         Print("Position with ID " + result.Position.Id + " was opened");
                         _nextSellCostAveLevel = Symbol.Bid + PipsToDigits(CostAveDistance);
                         _nextSellPyrAddLevel = Symbol.Bid - PipsToDigits(PyramidDistance);
+                        _PyramidSellStopLoss = result.Position.EntryPrice - PipsToDigits(CommissionsPips);
                     }
                 }
                 
@@ -923,6 +937,24 @@ namespace cAlgo.Robots
             }
         }
         #endregion
+
+        #region Set Trades To Breakeven
+        public void SetTradesToBreakeven(TradeType tradeType)
+        {
+            foreach (var position in Positions)
+            {
+                if (position.SymbolName != SymbolName) continue;
+                if (position.Label != OrderComment) continue;
+                if (position.Pips < PyramidDistance) continue;
+                if (position.TradeType != tradeType) continue;
+
+                bool isProtected = position.StopLoss.HasValue;
+                double newStopLoss = position.TradeType == TradeType.Buy ? position.EntryPrice + PipsToDigits(1) : position.EntryPrice - PipsToDigits(1);
+                if (isProtected) ModifyPosition(position, newStopLoss, null);
+            }
+        }
+        #endregion
+       
 
         #endregion
 
