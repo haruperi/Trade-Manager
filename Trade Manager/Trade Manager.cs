@@ -101,7 +101,7 @@ namespace cAlgo.Robots
         [Parameter("Trading Mode", Group = "STRATEGY", DefaultValue = TradingMode.Both)]
         public TradingMode MyTradingMode { get; set; }
 
-        [Parameter("Auto Strategy Name", Group = "STRATEGY", DefaultValue = AutoStrategyName.Trend_MA)]
+        [Parameter("Auto Strategy Name", Group = "STRATEGY", DefaultValue = AutoStrategyName.BreakoutTrading)]
         public AutoStrategyName MyAutoStrategyName { get; set; }
         #endregion
 
@@ -389,6 +389,8 @@ namespace cAlgo.Robots
 
             ScanOrders();
 
+            EvaluateEntry();
+
             int index = Bars.ClosePrices.Count - 1;
             int signal = SupportResistanceSignal(index);
 
@@ -512,6 +514,30 @@ namespace cAlgo.Robots
                 _totalPendingOrders++;
             }
 
+        }
+        #endregion
+
+        #region Evaluate Entry
+        private void EvaluateEntry()
+        {
+            /****************************  pre checks ****************************/
+            _signalEntry = 0;
+            if (!_isSpreadOK) return;
+            if (UseTradingHours && !_isOperatingHours) return;
+            if (_totalOpenOrders == MaxPositions) return;
+
+            /****************************  Automatic Trading ****************************/
+            if (MyTradingMode == TradingMode.Auto || MyTradingMode == TradingMode.Both)
+            {
+                if (MyAutoStrategyName == AutoStrategyName.BreakoutTrading)
+                {
+                    if (_breakoutSignal == 1) _signalEntry = 1;
+                    if (_breakoutSignal == 0) _signalEntry = -1;
+                }
+            }
+
+            if (_signalEntry == 1 && MyOpenTradeType == OpenTradeType.Sell) _signalEntry = 0;
+            if (_signalEntry == -1 && MyOpenTradeType == OpenTradeType.Buy) _signalEntry = 0;
         }
         #endregion
 
