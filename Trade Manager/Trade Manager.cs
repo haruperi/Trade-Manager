@@ -385,6 +385,8 @@ namespace cAlgo.Robots
 
             CheckOperationHours();
 
+            CheckSpread();
+
             int index = Bars.ClosePrices.Count - 1;
             int signal = SupportResistanceSignal(index);
 
@@ -474,6 +476,15 @@ namespace cAlgo.Robots
             if (TradingHourStart < TradingHourEnd && Server.Time.Hour >= TradingHourStart && Server.Time.Hour <= TradingHourEnd) _isOperatingHours = true;
             if (TradingHourStart > TradingHourEnd && ((Server.Time.Hour >= TradingHourStart && Server.Time.Hour <= 23) || (Server.Time.Hour <= TradingHourEnd && Server.Time.Hour >= 0))) _isOperatingHours = true;
         }
+        #endregion
+
+        #region Check Spread
+        private void CheckSpread()
+        {
+            _isSpreadOK = false;
+            if (Math.Round(Symbol.Spread / Symbol.PipSize, 2) <= MaxSpread) _isSpreadOK = true;
+        }
+
         #endregion
 
         #endregion
