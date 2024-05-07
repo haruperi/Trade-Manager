@@ -383,6 +383,8 @@ namespace cAlgo.Robots
         {
             OnBarInitialization();
 
+            CheckOperationHours();
+
             int index = Bars.ClosePrices.Count - 1;
             int signal = SupportResistanceSignal(index);
 
@@ -454,6 +456,23 @@ namespace cAlgo.Robots
 
             _isRecoveryTrade = false;
             _isPyramidTrade = false;
+        }
+        #endregion
+
+        #region Check Operation Hours
+        private void CheckOperationHours()
+        {
+            //If we are not using operating hours then IsOperatingHours is true and I skip the other checks
+            if (!UseTradingHours)
+            {
+                _isOperatingHours = true;
+                return;
+            }
+
+            //Check if the current hour is between the allowed hours of operations, if so IsOperatingHours is set true
+            if (TradingHourStart == TradingHourEnd && Server.Time.Hour == TradingHourStart) _isOperatingHours = true;
+            if (TradingHourStart < TradingHourEnd && Server.Time.Hour >= TradingHourStart && Server.Time.Hour <= TradingHourEnd) _isOperatingHours = true;
+            if (TradingHourStart > TradingHourEnd && ((Server.Time.Hour >= TradingHourStart && Server.Time.Hour <= 23) || (Server.Time.Hour <= TradingHourEnd && Server.Time.Hour >= 0))) _isOperatingHours = true;
         }
         #endregion
 
