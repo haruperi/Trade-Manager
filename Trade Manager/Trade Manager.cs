@@ -179,9 +179,6 @@ namespace cAlgo.Robots
         [Parameter("Equity Target", Group = "TRADE MANAGEMENT", DefaultValue = 100000)]
         public double EquityTarget { get; set; }
 
-        [Parameter("Pyramid Distance", Group = "TRADE MANAGEMENT", DefaultValue = 20)]
-        public double PyramidDistance { get; set; }
-
         [Parameter("Cost Ave Distance Multiplier", Group = "TRADE MANAGEMENT", DefaultValue = 2)]
         public double CostAveMultiplier { get; set; }
 
@@ -321,7 +318,7 @@ namespace cAlgo.Robots
         private int _totalOpenOrders, _totalOpenBuy, _totalOpenSell, _totalPendingOrders, _totalPendingBuy, _totalPendingSell, _signalEntry, _signalExit, _breakoutSignal;
         private double _gridDistanceBuy, _gridDistanceSell, _atr, _adrCurrent, _adrOverall, _adrPercent, _nextBuyCostAveLevel, _nextSellCostAveLevel,
                         _nextBuyPyAddLevel, _nextSellPyrAddLevel, _PyramidSellStopLoss, _PyramidBuyStopLoss, WhenToTrailPrice, _adrTarget,
-                        _highestHigh, _lowestHigh, _highestLow, _lowestLow, _lastSwingHigh, _lastSwingLow, _breakoutBuy, _breakoutSell;
+                        _highestHigh, _lowestHigh, _highestLow, _lowestLow, _lastSwingHigh, _lastSwingLow, _breakoutBuy, _breakoutSell, _pyramidDistance;
         double[] HTBarHigh, HTBarLow, HTBarClose, HTBarOpen, LTBarHigh, LTBarLow, LTBarClose, LTBarOpen = new double[5];
         int HTOldNumBars = 0, LTOldNumBars = 0;
         private string OrderComment, _recoverySTR, _pyramidSTR;
@@ -493,6 +490,7 @@ namespace cAlgo.Robots
             _isPyramidTrade = false;
 
             _adrTarget = Math.Round(_adrOverall / ADR_SL, 0);
+            _pyramidDistance = Math.Round(_adrOverall / 10, 0);
         }
         #endregion
 
@@ -636,7 +634,7 @@ namespace cAlgo.Robots
                 if (MyTakeProfitMode == TakeProfitMode.TP_Auto_ADR && totalSellPips > _adrTarget + _totalOpenSell) _signalExit = -1;
             }
 
-            if (IsStopOnEquityTarget && Account.Equity > EquityTarget) _signalExit = 2;
+            if (IsStopOnEquityTarget && Account.Equity > EquityTarget) _signalExit = 5;
         }
         #endregion
 
@@ -646,7 +644,7 @@ namespace cAlgo.Robots
 
             if (_signalExit == 0) return;
 
-            if (_signalExit == 2)
+            if (_signalExit == 5)
             {
                 foreach (var position in Positions)
                     ClosePositionAsync(position);
@@ -667,6 +665,23 @@ namespace cAlgo.Robots
                 _nextBuyCostAveLevel = 0;
             }
 
+            if (_signalExit == 2)
+            {
+                foreach (var position in Positions)
+                {
+                    if (position.SymbolName == SymbolName &&
+                        position.Label == OrderComment &&
+                        position.TradeType == TradeType.Buy &&
+                        position.Pips > CommissionsPips
+                        )
+                        ClosePositionAsync(position);
+                }
+
+                ScanOrders();
+
+                if (_totalOpenBuy == 0) _nextBuyCostAveLevel = 0;
+            }
+
             if (_signalExit == -1)
             {
                 foreach (var position in Positions)
@@ -678,6 +693,23 @@ namespace cAlgo.Robots
                 }
 
                 _nextSellCostAveLevel = 0;
+            }
+
+            if (_signalExit == -2)
+            {
+                foreach (var position in Positions)
+                {
+                    if (position.SymbolName == SymbolName &&
+                        position.Label == OrderComment &&
+                        position.TradeType == TradeType.Sell &&
+                        position.Pips > CommissionsPips
+                        ) 
+                        ClosePositionAsync(position);
+                }
+
+                ScanOrders();
+
+                if (_totalOpenSell == 0) _nextSellCostAveLevel = 0;
             }
 
         }
@@ -737,15 +769,18 @@ namespace cAlgo.Robots
                 {
                     if (Symbol.Ask < _nextBuyCostAveLevel || Symbol.Ask > _nextBuyPyAddLevel)
                     {
-                        SetTradesToBreakeven(TradeType.Buy);
                         var result = ExecuteMarketOrder(TradeType.Buy, SymbolName, _volumeInUnits, OrderComment, StopLoss, TakeProfit);
                         if (result.Error != null) GetError(result.Error.ToString());
                         else
                         {
                             Print("Position with ID " + result.Position.Id + " was opened");
                             _nextBuyCostAveLevel = Symbol.Ask - PipsToDigits(_adrTarget);
-                            _nextBuyPyAddLevel = Symbol.Ask + PipsToDigits(PyramidDistance);
+                            _nextBuyPyAddLevel = Symbol.Ask + PipsToDigits(_pyramidDistance);
                             _PyramidBuyStopLoss = result.Position.EntryPrice + PipsToDigits(CommissionsPips);
+
+                            _signalExit = 2;
+                            ExecuteExit();
+                            SetTradesToBreakeven(TradeType.Buy);
                         }
                     }
 
@@ -763,8 +798,11 @@ namespace cAlgo.Robots
                     {
                         Print("Position with ID " + result.Position.Id + " was opened");
                         _nextBuyCostAveLevel = Symbol.Ask - PipsToDigits(_adrTarget);
-                        _nextBuyPyAddLevel = Symbol.Ask + PipsToDigits(PyramidDistance);
+                        _nextBuyPyAddLevel = Symbol.Ask + PipsToDigits(_pyramidDistance);
                         _PyramidBuyStopLoss = result.Position.EntryPrice + PipsToDigits(CommissionsPips);
+
+                        _signalExit = 2;
+                        ExecuteExit();
                     }
                 }
                 
@@ -778,15 +816,18 @@ namespace cAlgo.Robots
                 {
                     if (Symbol.Bid > _nextSellCostAveLevel || Symbol.Bid < _nextSellPyrAddLevel)
                     {
-                        SetTradesToBreakeven(TradeType.Sell);
                         var result = ExecuteMarketOrder(TradeType.Sell, SymbolName, _volumeInUnits, OrderComment, StopLoss, TakeProfit);
                         if (result.Error != null) GetError(result.Error.ToString());
                         else
                         {
                             Print("Position with ID " + result.Position.Id + " was opened");
                             _nextSellCostAveLevel = Symbol.Bid + PipsToDigits(_adrTarget);
-                            _nextSellPyrAddLevel = Symbol.Bid - PipsToDigits(PyramidDistance);
+                            _nextSellPyrAddLevel = Symbol.Bid - PipsToDigits(_pyramidDistance);
                             _PyramidSellStopLoss = result.Position.EntryPrice - PipsToDigits(CommissionsPips);
+
+                            _signalExit = -2;
+                            ExecuteExit();
+                            SetTradesToBreakeven(TradeType.Sell);
                         }
                     }
                 }
@@ -799,8 +840,11 @@ namespace cAlgo.Robots
                     {
                         Print("Position with ID " + result.Position.Id + " was opened");
                         _nextSellCostAveLevel = Symbol.Bid + PipsToDigits(_adrTarget);
-                        _nextSellPyrAddLevel = Symbol.Bid - PipsToDigits(PyramidDistance);
+                        _nextSellPyrAddLevel = Symbol.Bid - PipsToDigits(_pyramidDistance);
                         _PyramidSellStopLoss = result.Position.EntryPrice - PipsToDigits(CommissionsPips);
+
+                        _signalExit = -2;
+                        ExecuteExit();
                     }
                 }
                 
@@ -968,7 +1012,7 @@ namespace cAlgo.Robots
             {
                 if (position.SymbolName != SymbolName) continue;
                 if (position.Label != OrderComment) continue;
-                if (position.Pips < PyramidDistance) continue;
+                if (position.Pips < _pyramidDistance) continue;
                 if (position.TradeType != tradeType) continue;
 
                 bool isProtected = position.StopLoss.HasValue;
