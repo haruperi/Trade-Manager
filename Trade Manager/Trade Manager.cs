@@ -1283,15 +1283,15 @@ namespace cAlgo.Robots
         private void buystoplimitorder(double openprice)
         {
             openprice = openprice + Symbol.Spread + PipsToDigits(PendingOrderDistance);
-            if (openprice <= Symbol.Ask) PlaceLimitOrderAsync(TradeType.Buy, SymbolName, Symbol.QuantityToVolumeInUnits(DefaultLotSize), openprice, OrderComment, _adrOverall*3, DefaultTakeProfit);
-            if (openprice > Symbol.Ask) PlaceStopOrderAsync(TradeType.Buy, SymbolName, Symbol.QuantityToVolumeInUnits(DefaultLotSize), openprice, OrderComment, _adrOverall * 3, DefaultTakeProfit);
+            if (openprice <= Symbol.Ask) PlaceLimitOrderAsync(TradeType.Buy, SymbolName, Symbol.QuantityToVolumeInUnits(DefaultLotSize), openprice, OrderComment, _adrOverall*3, 0);
+            if (openprice > Symbol.Ask) PlaceStopOrderAsync(TradeType.Buy, SymbolName, Symbol.QuantityToVolumeInUnits(DefaultLotSize), openprice, OrderComment, _adrOverall * 3, 0);
         }
 
         private void sellstoplimitorder(double openprice)
         {
             openprice = openprice - Symbol.Spread - PipsToDigits(PendingOrderDistance);
-            if (openprice >= Symbol.Bid) PlaceLimitOrderAsync(TradeType.Sell, SymbolName, Symbol.QuantityToVolumeInUnits(DefaultLotSize), openprice, OrderComment, _adrOverall * 3, DefaultTakeProfit);
-            if (openprice < Symbol.Bid) PlaceStopOrderAsync(TradeType.Sell, SymbolName, Symbol.QuantityToVolumeInUnits(DefaultLotSize), openprice, OrderComment, _adrOverall * 3, DefaultTakeProfit);
+            if (openprice >= Symbol.Bid) PlaceLimitOrderAsync(TradeType.Sell, SymbolName, Symbol.QuantityToVolumeInUnits(DefaultLotSize), openprice, OrderComment, _adrOverall * 3, 0);
+            if (openprice < Symbol.Bid) PlaceStopOrderAsync(TradeType.Sell, SymbolName, Symbol.QuantityToVolumeInUnits(DefaultLotSize), openprice, OrderComment, _adrOverall * 3, 0);
         }
 
         private void OnChartMouseDown(ChartMouseEventArgs obj)
@@ -1323,11 +1323,11 @@ namespace cAlgo.Robots
                     HorizontalLine = Chart.DrawHorizontalLine("stoplimitHorizontalLine", obj.YValue, Color.FromHex("#2C820A"), HLineThickness, HLineStyle);
                     if (Math.Round(obj.YValue, Symbol.Digits) <= Symbol.Ask)
                     {
-                        var sprice = Chart.DrawText("stoplimitprice", "Buy Limit " + Math.Round(obj.YValue, Symbol.Digits).ToString(), Chart.FirstVisibleBarIndex, obj.YValue, Color.FromHex("#2C820A"));
+                        var sprice = Chart.DrawText("stoplimitprice", "Buy Limit " + Math.Round(obj.YValue, Symbol.Digits).ToString(), Chart.FirstVisibleBarIndex, obj.YValue, Color.FromHex("#1763A4"));
                     }
                     else if (Math.Round(obj.YValue, Symbol.Digits) > Symbol.Ask)
                     {
-                        var sprice = Chart.DrawText("stoplimitprice", "Buy Stop " + Math.Round(obj.YValue, Symbol.Digits).ToString(), Chart.FirstVisibleBarIndex, obj.YValue, Color.FromHex("#2C820A"));
+                        var sprice = Chart.DrawText("stoplimitprice", "Buy Stop " + Math.Round(obj.YValue, Symbol.Digits).ToString(), Chart.FirstVisibleBarIndex, obj.YValue, Color.FromHex("#1763A4"));
                     }
                 }
             }
@@ -1339,11 +1339,11 @@ namespace cAlgo.Robots
                     HorizontalLine = Chart.DrawHorizontalLine("stoplimitHorizontalLine", obj.YValue, Color.FromHex("#F05824"), HLineThickness, HLineStyle);
                     if (Math.Round(obj.YValue, Symbol.Digits) >= Symbol.Bid)
                     {
-                        var sprice = Chart.DrawText("stoplimitprice", "Sell Limit " + Math.Round(obj.YValue, Symbol.Digits).ToString(), Chart.FirstVisibleBarIndex, obj.YValue, Color.FromHex("#F05824"));
+                        var sprice = Chart.DrawText("stoplimitprice", "Sell Limit " + Math.Round(obj.YValue, Symbol.Digits).ToString(), Chart.FirstVisibleBarIndex, obj.YValue, Color.FromHex("#802BB2"));
                     }
                     else if (Math.Round(obj.YValue, Symbol.Digits) < Symbol.Bid)
                     {
-                        var sprice = Chart.DrawText("stoplimitprice", "Sell Stop " + Math.Round(obj.YValue, Symbol.Digits).ToString(), Chart.FirstVisibleBarIndex, obj.YValue, Color.FromHex("#F05824"));
+                        var sprice = Chart.DrawText("stoplimitprice", "Sell Stop " + Math.Round(obj.YValue, Symbol.Digits).ToString(), Chart.FirstVisibleBarIndex, obj.YValue, Color.FromHex("#802BB2"));
                     }
                 }
             }
