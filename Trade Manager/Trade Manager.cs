@@ -315,7 +315,7 @@ namespace cAlgo.Robots
         private ChartHorizontalLine HorizontalLine;
 
         private bool _isPreChecksOk, _isSpreadOK, _isOperatingHours, _isUpSwing, _rsiBullishTrigger, _rsiBearishTrigger, buySLbool, sellSLbool, _isRecoveryTrade, _isPyramidTrade;
-        private int _totalOpenOrders, _totalOpenBuy, _totalOpenSell, _totalPendingOrders, _totalPendingBuy, _totalPendingSell, _signalEntry, _signalExit, _breakoutSignal;
+        private int _totalOpenOrders, _totalOpenBuy, _totalOpenSell, _totalPendingOrders, _totalPendingBuy, _totalPendingSell, _signalEntry, _signalExit, _breakoutSignal, _lastSellID, _lastBuyID;
         private double _gridDistanceBuy, _gridDistanceSell, _atr, _adrCurrent, _adrOverall, _adrPercent, _nextBuyCostAveLevel, _nextSellCostAveLevel,
                         _nextBuyPyAddLevel, _nextSellPyrAddLevel, _PyramidSellStopLoss, _PyramidBuyStopLoss, WhenToTrailPrice, _adrTarget,
                         _highestHigh, _lowestHigh, _highestLow, _lowestLow, _lastSwingHigh, _lastSwingLow, _breakoutBuy, _breakoutSell, _pyramidDistance;
@@ -683,6 +683,17 @@ namespace cAlgo.Robots
                 if (_totalOpenBuy == 0) _nextBuyCostAveLevel = 0;
             }
 
+            if (_signalExit == 3)
+            {
+                foreach (var position in Positions)
+                {
+                    if (position.Id == _lastBuyID)
+                        ClosePositionAsync(position);
+                }
+
+                ScanOrders();
+            }
+
             if (_signalExit == -1)
             {
                 foreach (var position in Positions)
@@ -711,6 +722,17 @@ namespace cAlgo.Robots
                 ScanOrders();
 
                 if (_totalOpenSell == 0) _nextSellCostAveLevel = 0;
+            }
+
+            if (_signalExit == -3)
+            {
+                foreach (var position in Positions)
+                {
+                    if (position.Id == _lastSellID)
+                        ClosePositionAsync(position);
+                }
+
+                ScanOrders();
             }
 
         }
@@ -777,7 +799,14 @@ namespace cAlgo.Robots
                         if (result.Error != null) GetError(result.Error.ToString());
                         else
                         {
-                            Print("Position with ID " + result.Position.Id + " was opened");
+                           /* if (_totalOpenSell > 1)
+                            {
+                                _signalExit = -3;
+                                ExecuteExit();
+                            } */
+
+                            _lastBuyID = result.Position.Id;
+                            Print("Position with ID " + _lastBuyID + " was opened");
 
                             SetTradesToPyramidSL(TradeType.Buy);
 
@@ -791,14 +820,22 @@ namespace cAlgo.Robots
 
                 if (_totalOpenBuy == 0)
                 {
+                    _signalExit = -2;
+                    ExecuteExit();
+
                     var result = ExecuteMarketOrder(TradeType.Buy, SymbolName, _volumeInUnits, OrderComment, StopLoss, TakeProfit);
                     if (result.Error != null) GetError(result.Error.ToString());
                     else
                     {
                         Print("Position with ID " + result.Position.Id + " was opened");
 
-                        _signalExit = 2;
-                        ExecuteExit();
+                        
+
+                      /*  if (_totalOpenSell > 1)
+                        {
+                            _signalExit = -3;
+                            ExecuteExit();
+                        } */
 
                         _nextBuyCostAveLevel = Symbol.Ask - PipsToDigits(_adrTarget);
                         _nextBuyPyAddLevel = Symbol.Ask + PipsToDigits(_pyramidDistance);
@@ -823,7 +860,14 @@ namespace cAlgo.Robots
                         if (result.Error != null) GetError(result.Error.ToString());
                         else
                         {
-                            Print("Position with ID " + result.Position.Id + " was opened");
+                          /*  if (_totalOpenBuy > 1)
+                            {
+                                _signalExit = 3;
+                                ExecuteExit();
+                            } */
+
+                            _lastSellID = result.Position.Id;
+                            Print("Position with ID " + _lastSellID + " was opened");
 
                             SetTradesToPyramidSL(TradeType.Sell);
 
@@ -836,14 +880,20 @@ namespace cAlgo.Robots
 
                 if (_totalOpenSell == 0)
                 {
+                    _signalExit = 2;
+                    ExecuteExit();
+
                     var result = ExecuteMarketOrder(TradeType.Sell, SymbolName, _volumeInUnits, OrderComment, StopLoss, TakeProfit);
                     if (result.Error != null) GetError(result.Error.ToString());
                     else
                     {
                         Print("Position with ID " + result.Position.Id + " was opened");
 
-                        _signalExit = -2;
-                        ExecuteExit();
+                      /*  if (_totalOpenBuy > 1)
+                        {
+                            _signalExit = 3;
+                            ExecuteExit();
+                        } */
 
                         _nextSellCostAveLevel = Symbol.Bid + PipsToDigits(_adrTarget);
                         _nextSellPyrAddLevel = Symbol.Bid - PipsToDigits(_pyramidDistance);
