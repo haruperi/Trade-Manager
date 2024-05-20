@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Security.Cryptography;
 using System.Text;
 using cAlgo.API;
 using cAlgo.API.Collections;
@@ -170,32 +171,38 @@ namespace cAlgo.Robots
         [Parameter("How Many Split Trades", Group = "TRADE MANAGEMENT", DefaultValue = 2)]
         public double NumOfSplitTrades { get; set; }
 
-        [Parameter("Use Pyramids for TP", Group = "TRADE MANAGEMENT", DefaultValue = false)]
-        public bool DoPyramidsTrading { get; set; }
-
         [Parameter("Stop Bot On Equity Target", Group = "TRADE MANAGEMENT", DefaultValue = false)]
         public bool IsStopOnEquityTarget { get; set; }
 
         [Parameter("Equity Target", Group = "TRADE MANAGEMENT", DefaultValue = 100000)]
         public double EquityTarget { get; set; }
 
+        [Parameter("Cost Ave Distance fixed or Variable", Group = "TRADE MANAGEMENT", DefaultValue = true)]
+        public bool IsCostAveFixed { get; set; }
+
+        [Parameter("Cost Ave Distance", Group = "TRADE MANAGEMENT", DefaultValue = 20)]
+        public double CostAveDistance { get; set; }
+
         [Parameter("Cost Ave Distance Multiplier", Group = "TRADE MANAGEMENT", DefaultValue = 2)]
         public double CostAveMultiplier { get; set; }
+
+        [Parameter("Use Pyramids for TP", Group = "TRADE MANAGEMENT", DefaultValue = false)]
+        public bool DoPyramidsTrading { get; set; }
 
         [Parameter("Pyramid Lot Divisor", Group = "TRADE MANAGEMENT", DefaultValue = 2)]
         public double PyramidLotDivisor { get; set; }
 
-        [Parameter("Pyramid Stop Loss", Group = "TRADE MANAGEMENT", DefaultValue = 5)]
-        public double PyramidStopLoss { get; set; }
+        [Parameter("Pyramids Distance fixed or Variable", Group = "TRADE MANAGEMENT", DefaultValue = true)]
+        public bool IsPyramidDistanceFixed { get; set; }
+
+        [Parameter("Pyramid Distance", Group = "TRADE MANAGEMENT", DefaultValue = 20)]
+        public double PyramidDistance { get; set; }
 
         [Parameter("Use Trailing Stop ", Group = "TRADE MANAGEMENT", DefaultValue = TrailingMode.TL_None)]
         public TrailingMode MyTrailingMode { get; set; }
 
         [Parameter("Trail After (Pips) ", Group = "TRADE MANAGEMENT", DefaultValue = 10, MinValue = 1)]
         public double WhenToTrail { get; set; }
-
-        [Parameter("Break-Even Losing Trades", Group = "TRADE MANAGEMENT", DefaultValue = false)]
-        public bool BreakEvenLosing { get; set; }
 
         [Parameter("Cost Ave Take Profit", Group = "TRADE MANAGEMENT", DefaultValue = false)]
         public bool IsCostAveTakeProfit { get; set; }
@@ -213,8 +220,11 @@ namespace cAlgo.Robots
         [Parameter("ADRPeriod", Group = "INDICATOR SETTINGS", DefaultValue = 10)]
         public int ADRPeriod { get; set; }
 
-        [Parameter("ADR Divisor SL", Group = "INDICATOR SETTINGS", DefaultValue = 3)]
+        [Parameter("ADR SL Divisor", Group = "INDICATOR SETTINGS", DefaultValue = 3)]
         public double ADR_SL { get; set; }
+
+        [Parameter("ADR Gap Percent", Group = "INDICATOR SETTINGS", DefaultValue = 10)]
+        public double ADR_Gap { get; set; }
 
         [Parameter("WPRPeriod", Group = "INDICATOR SETTINGS", DefaultValue = 5)]
         public int WPRPeriod { get; set; }
@@ -318,14 +328,14 @@ namespace cAlgo.Robots
         private int _totalOpenOrders, _totalOpenBuy, _totalOpenSell, _totalPendingOrders, _totalPendingBuy, _totalPendingSell, _signalEntry, _signalExit, _breakoutSignal, _lastSellID, _lastBuyID;
         private double _gridDistanceBuy, _gridDistanceSell, _atr, _adrCurrent, _adrOverall, _adrPercent, _nextBuyCostAveLevel, _nextSellCostAveLevel,
                         _nextBuyPyAddLevel, _nextSellPyrAddLevel, _PyramidSellStopLoss, _PyramidBuyStopLoss, WhenToTrailPrice, _adrTarget,
-                        _highestHigh, _lowestHigh, _highestLow, _lowestLow, _lastSwingHigh, _lastSwingLow, _breakoutBuy, _breakoutSell, _pyramidDistance;
+                        _highestHigh, _lowestHigh, _highestLow, _lowestLow, _lastSwingHigh, _lastSwingLow, _breakoutBuy, _breakoutSell;
         double[] HTBarHigh, HTBarLow, HTBarClose, HTBarOpen, LTBarHigh, LTBarLow, LTBarClose, LTBarOpen = new double[5];
         int HTOldNumBars = 0, LTOldNumBars = 0;
         private string OrderComment, _recoverySTR, _pyramidSTR;
 
         private RelativeStrengthIndex _rsi;
         private WilliamsPctR _williamsPctR;
-        private ParabolicSAR parabolicSAR;
+        private ParabolicSAR _parabolicSAR;
         private AverageTrueRange _averageTrueRange;
         private MovingAverage _fastMA, _slowMA, _ltffastMA, _ltfslowMA, _htffastMA, _htfslowMA;
 
@@ -350,6 +360,10 @@ namespace cAlgo.Robots
             if (!_isPreChecksOk) Stop();
 
             _dailyBars = MarketData.GetBars(TimeFrame.Daily);
+
+            _williamsPctR = Indicators.WilliamsPctR(WPRPeriod);
+            _rsi = Indicators.RelativeStrengthIndex(Bars.ClosePrices, RSIPeriod);
+            _parabolicSAR = Indicators.ParabolicSAR(MinAccFactor, MaxAccFactor);
 
             _adrCurrent = 0;
             _adrPercent = 0;
@@ -393,8 +407,11 @@ namespace cAlgo.Robots
 
             if (AutoTradeManagement)
             {
-                Chart.DrawHorizontalLine("ShowNextBuy", _nextBuyCostAveLevel, "#7DDA58", 3, LineStyle.LinesDots);
-                Chart.DrawHorizontalLine("ShowNextSell", _nextSellCostAveLevel, "#E4080A", 3, LineStyle.LinesDots);
+                Chart.DrawHorizontalLine("CostAveBuy", _nextBuyCostAveLevel, "#7DDA58", 3, LineStyle.LinesDots);
+                Chart.DrawHorizontalLine("CostAveSell", _nextSellCostAveLevel, "#E4080A", 3, LineStyle.LinesDots);
+
+                Chart.DrawHorizontalLine("PyramidBuy", _nextBuyPyAddLevel, Color.Blue, 2, LineStyle.DotsVeryRare);
+                Chart.DrawHorizontalLine("PyramidSell", _nextSellPyrAddLevel, Color.Red, 2, LineStyle.DotsVeryRare);
             }
 
             CalculateADR();
@@ -491,7 +508,6 @@ namespace cAlgo.Robots
             _isPyramidTrade = false;
 
             _adrTarget = Math.Round(_adrOverall / ADR_SL, 0);
-            _pyramidDistance = Math.Round(_adrOverall / 10, 0);
         }
         #endregion
 
@@ -558,12 +574,10 @@ namespace cAlgo.Robots
                 {
                     if (position.SymbolName != SymbolName) continue;
                     if (position.Label != OrderComment) continue;
-                    if (position.Pips < DefaultStopLoss) continue;
-                    if (position.TradeType == TradeType.Buy && position.StopLoss == position.EntryPrice + PipsToDigits(1)) continue;
-                    if (position.TradeType == TradeType.Sell && position.StopLoss == position.EntryPrice - PipsToDigits(1)) continue;
+                    if (position.Pips < WhenToTrail+CommissionsPips) continue;
 
                     bool isProtected = position.StopLoss.HasValue;
-                    double newStopLoss = position.TradeType == TradeType.Buy ? position.EntryPrice + PipsToDigits(1) : position.EntryPrice - PipsToDigits(1);
+                    double newStopLoss = position.TradeType == TradeType.Buy ? Symbol.Ask - PipsToDigits(WhenToTrail+CommissionsPips) : Symbol.Bid + PipsToDigits(WhenToTrail + CommissionsPips);
                     if (isProtected) ModifyPosition(position, newStopLoss, null);
 
                 }
@@ -571,7 +585,7 @@ namespace cAlgo.Robots
 
             if (MyTrailingMode == TrailingMode.TL_Psar)
             {
-                double newStopLoss = parabolicSAR.Result.LastValue;
+                double newStopLoss = _parabolicSAR.Result.LastValue;
 
                 foreach (var position in Positions)
                 {
@@ -620,12 +634,7 @@ namespace cAlgo.Robots
                     totalSellPips += position.Pips;
                 }
             }
-
-            if (BreakEvenLosing)
-            {
-                if (_totalOpenBuy > 1 && totalBuyPips > _totalOpenBuy) _signalExit = 1;
-                if (_totalOpenSell > 1 && totalSellPips > _totalOpenSell) _signalExit = -1;
-            }
+           
 
             if (IsCostAveTakeProfit)
             {
@@ -645,7 +654,7 @@ namespace cAlgo.Robots
 
             if (_signalExit == 0) return;
 
-            if (_signalExit == 5)
+            if (_signalExit == 5)   // Close all positions and stop bot
             {
                 foreach (var position in Positions)
                     ClosePositionAsync(position);
@@ -653,7 +662,7 @@ namespace cAlgo.Robots
                 Stop();
             }
 
-            if (_signalExit == 1)
+            if (_signalExit == 1)  // Close all Buy positions
             {
                 foreach (var position in Positions)
                 {
@@ -662,39 +671,30 @@ namespace cAlgo.Robots
                     if (position.TradeType != TradeType.Buy) continue;
                     ClosePositionAsync(position);
                 }
-
-                _nextBuyCostAveLevel = 0;
             }
 
-            if (_signalExit == 2)
+            if (_signalExit == 2) // Close all Buy positions in profit
             {
                 foreach (var position in Positions)
                 {
-                    if (position.SymbolName == SymbolName &&
-                        position.Label == OrderComment &&
-                        position.TradeType == TradeType.Buy &&
-                        position.Pips > CommissionsPips
-                        )
+                    if (position.SymbolName != SymbolName) continue;
+                    if (position.Label != OrderComment) continue;
+                    if (position.TradeType != TradeType.Buy) continue;
+                    if (position.Pips < CommissionsPips) continue;
                         ClosePositionAsync(position);
                 }
-
-                ScanOrders();
-
-                if (_totalOpenBuy == 0) _nextBuyCostAveLevel = 0;
             }
 
-            if (_signalExit == 3)
+            if (_signalExit == 3) // Close last Buy position
             {
                 foreach (var position in Positions)
                 {
                     if (position.Id == _lastBuyID)
                         ClosePositionAsync(position);
                 }
-
-                ScanOrders();
             }
 
-            if (_signalExit == -1)
+            if (_signalExit == -1) // Close all Sell positions
             {
                 foreach (var position in Positions)
                 {
@@ -703,38 +703,44 @@ namespace cAlgo.Robots
                     if (position.TradeType != TradeType.Sell) continue;
                     ClosePositionAsync(position);
                 }
-
-                _nextSellCostAveLevel = 0;
             }
 
-            if (_signalExit == -2)
+            if (_signalExit == -2) // Close all Sell positions in profit
             {
                 foreach (var position in Positions)
                 {
-                    if (position.SymbolName == SymbolName &&
-                        position.Label == OrderComment &&
-                        position.TradeType == TradeType.Sell &&
-                        position.Pips > CommissionsPips
-                        ) 
-                        ClosePositionAsync(position);
+                    if (position.SymbolName != SymbolName) continue;
+                    if (position.Label != OrderComment) continue;
+                    if (position.TradeType != TradeType.Sell) continue;
+                    if (position.Pips < CommissionsPips) continue;
+                    ClosePositionAsync(position);
                 }
-
-                ScanOrders();
-
-                if (_totalOpenSell == 0) _nextSellCostAveLevel = 0;
             }
 
-            if (_signalExit == -3)
+            if (_signalExit == -3) // Close last Sell position
             {
                 foreach (var position in Positions)
                 {
                     if (position.Id == _lastSellID)
                         ClosePositionAsync(position);
                 }
-
-                ScanOrders();
             }
 
+            ScanOrders();
+
+            if (_totalOpenBuy == 0)
+            {
+                _nextBuyCostAveLevel = 0;
+                _nextBuyPyAddLevel = 0;
+                _PyramidBuyStopLoss = 0; 
+            }
+
+            if (_totalOpenSell == 0)
+            {
+                _nextSellCostAveLevel = 0;
+                _nextSellPyrAddLevel = 0;
+                _PyramidSellStopLoss = 0;
+            }
         }
         #endregion
 
@@ -755,6 +761,12 @@ namespace cAlgo.Robots
                     if (_breakoutSignal == 1) _signalEntry = 1;
                     if (_breakoutSignal == 0) _signalEntry = -1;
                 }
+
+                if (MyAutoStrategyName == AutoStrategyName.RSIMeanReversion)
+                {
+                    if (_rsi.Result.Last(1) >= OSLevel && _rsi.Result.Last(2) < OSLevel) _signalEntry = 1;
+                    if (_rsi.Result.Last(1) <= OBLevel && _rsi.Result.Last(2) > OBLevel) _signalEntry = -1;
+                }
             }
 
             if (_signalEntry == 1 && MyOpenTradeType == OpenTradeType.Sell) _signalEntry = 0;
@@ -767,6 +779,7 @@ namespace cAlgo.Robots
         {
             if (_signalEntry == 0) return;
 
+            TradeResult result;
             double StopLoss = 0;
             double TakeProfit = 0;
             double _volumeInUnits = 0;
@@ -775,10 +788,10 @@ namespace cAlgo.Robots
             if (MyStopLossMode == StopLossMode.SL_Fixed) StopLoss = DefaultStopLoss;
             if (MyStopLossMode == StopLossMode.SL_Auto_ADR) StopLoss = _adrTarget;
 
-            if (MyTakeProfitMode == TakeProfitMode.TP_None) TakeProfit = 0;
-            if (MyTakeProfitMode == TakeProfitMode.TP_Fixed) TakeProfit = DefaultTakeProfit;
-            if (MyTakeProfitMode == TakeProfitMode.TP_Auto_RRR) TakeProfit = Math.Round(StopLoss * RiskRewardRatio + CommissionsPips, 0);
-            if (MyTakeProfitMode == TakeProfitMode.TP_Auto_ADR) TakeProfit = _adrTarget + CommissionsPips;
+           // if (MyTakeProfitMode == TakeProfitMode.TP_None) TakeProfit = 0;
+           // if (MyTakeProfitMode == TakeProfitMode.TP_Fixed) TakeProfit = DefaultTakeProfit;
+           // if (MyTakeProfitMode == TakeProfitMode.TP_Auto_RRR) TakeProfit = Math.Round(StopLoss * RiskRewardRatio + CommissionsPips, 0);
+           // if (MyTakeProfitMode == TakeProfitMode.TP_Auto_ADR) TakeProfit = _adrTarget + CommissionsPips;
 
             if (MyPositionSizeMode == PositionSizeMode.Risk_Fixed) _volumeInUnits = Symbol.QuantityToVolumeInUnits(DefaultLotSize);
             if (MyPositionSizeMode == PositionSizeMode.Risk_Auto) _volumeInUnits = LotSizeCalculate();
@@ -787,7 +800,6 @@ namespace cAlgo.Robots
 
             if (_signalEntry == 1 && _totalOpenOrders <= MaxPositions && _totalOpenBuy <= MaxBuyPositions)
             {
-                
                 if (_totalOpenBuy > 0 && AutoTradeManagement)
                 {
                     _signalExit = -2;
@@ -795,7 +807,8 @@ namespace cAlgo.Robots
 
                     if (Symbol.Ask < _nextBuyCostAveLevel || Symbol.Ask > _nextBuyPyAddLevel)
                     {
-                        var result = ExecuteMarketOrder(TradeType.Buy, SymbolName, _volumeInUnits, OrderComment, StopLoss, TakeProfit);
+                         result = ExecuteMarketOrder(TradeType.Buy, SymbolName, _volumeInUnits, OrderComment, StopLoss, TakeProfit);
+
                         if (result.Error != null) GetError(result.Error.ToString());
                         else
                         {
@@ -807,10 +820,18 @@ namespace cAlgo.Robots
 
                             _lastBuyID = result.Position.Id;
                             Print("Position with ID " + _lastBuyID + " was opened");
-
+                            
                             SetTradesToPyramidSL(TradeType.Buy);
 
-                            _nextBuyCostAveLevel = Symbol.Ask - PipsToDigits(_adrTarget);
+                            double _pyramidDistance = 0;
+                            if (IsPyramidDistanceFixed) _pyramidDistance = PyramidDistance;
+                            else _pyramidDistance = Math.Round(_adrOverall / ADR_Gap, 0);
+
+                            double _costAveDistance = 0;
+                            if (IsCostAveFixed) _costAveDistance = CostAveDistance;
+                            else _costAveDistance = _adrTarget;
+
+                            _nextBuyCostAveLevel = Symbol.Ask - PipsToDigits(_costAveDistance);
                             _nextBuyPyAddLevel = Symbol.Ask + PipsToDigits(_pyramidDistance);
                             _PyramidBuyStopLoss = result.Position.EntryPrice + PipsToDigits(CommissionsPips);
                         }
@@ -823,21 +844,28 @@ namespace cAlgo.Robots
                     _signalExit = -2;
                     ExecuteExit();
 
-                    var result = ExecuteMarketOrder(TradeType.Buy, SymbolName, _volumeInUnits, OrderComment, StopLoss, TakeProfit);
+                    result = ExecuteMarketOrder(TradeType.Buy, SymbolName, _volumeInUnits, OrderComment, StopLoss, TakeProfit);
+
                     if (result.Error != null) GetError(result.Error.ToString());
                     else
                     {
-                        Print("Position with ID " + result.Position.Id + " was opened");
+                        _lastBuyID = result.Position.Id;
+                        Print("Position with ID " + _lastBuyID + " was opened");
+                        /*  if (_totalOpenSell > 1)
+                          {
+                              _signalExit = -3;
+                              ExecuteExit();
+                          } */
 
-                        
+                        double _pyramidDistance = 0;
+                        if (IsPyramidDistanceFixed) _pyramidDistance = PyramidDistance;
+                        else _pyramidDistance = Math.Round(_adrOverall / ADR_Gap, 0);
 
-                      /*  if (_totalOpenSell > 1)
-                        {
-                            _signalExit = -3;
-                            ExecuteExit();
-                        } */
+                        double _costAveDistance = 0;
+                        if (IsCostAveFixed) _costAveDistance = CostAveDistance;
+                        else _costAveDistance = _adrTarget;
 
-                        _nextBuyCostAveLevel = Symbol.Ask - PipsToDigits(_adrTarget);
+                        _nextBuyCostAveLevel = Symbol.Ask - PipsToDigits(_costAveDistance);
                         _nextBuyPyAddLevel = Symbol.Ask + PipsToDigits(_pyramidDistance);
                         _PyramidBuyStopLoss = result.Position.EntryPrice + PipsToDigits(CommissionsPips);
                     }
@@ -856,7 +884,8 @@ namespace cAlgo.Robots
 
                     if (Symbol.Bid > _nextSellCostAveLevel || Symbol.Bid < _nextSellPyrAddLevel)
                     {
-                        var result = ExecuteMarketOrder(TradeType.Sell, SymbolName, _volumeInUnits, OrderComment, StopLoss, TakeProfit);
+                        result = ExecuteMarketOrder(TradeType.Sell, SymbolName, _volumeInUnits, OrderComment, StopLoss, TakeProfit);
+
                         if (result.Error != null) GetError(result.Error.ToString());
                         else
                         {
@@ -869,9 +898,17 @@ namespace cAlgo.Robots
                             _lastSellID = result.Position.Id;
                             Print("Position with ID " + _lastSellID + " was opened");
 
-                            SetTradesToPyramidSL(TradeType.Sell);
+                            if (Symbol.Bid < _nextSellPyrAddLevel) SetTradesToPyramidSL(TradeType.Sell);
 
-                            _nextSellCostAveLevel = Symbol.Bid + PipsToDigits(_adrTarget);
+                            double _pyramidDistance = 0;
+                            if (IsPyramidDistanceFixed) _pyramidDistance = PyramidDistance;
+                            else _pyramidDistance = Math.Round(_adrOverall / ADR_Gap, 0);
+
+                            double _costAveDistance = 0;
+                            if (IsCostAveFixed) _costAveDistance = CostAveDistance;
+                            else _costAveDistance = _adrTarget;
+
+                            _nextSellCostAveLevel = Symbol.Bid + PipsToDigits(_costAveDistance);
                             _nextSellPyrAddLevel = Symbol.Bid - PipsToDigits(_pyramidDistance);
                             _PyramidSellStopLoss = result.Position.EntryPrice - PipsToDigits(CommissionsPips);
                         }
@@ -883,19 +920,28 @@ namespace cAlgo.Robots
                     _signalExit = 2;
                     ExecuteExit();
 
-                    var result = ExecuteMarketOrder(TradeType.Sell, SymbolName, _volumeInUnits, OrderComment, StopLoss, TakeProfit);
+                     result = ExecuteMarketOrder(TradeType.Sell, SymbolName, _volumeInUnits, OrderComment, StopLoss, TakeProfit);
                     if (result.Error != null) GetError(result.Error.ToString());
                     else
                     {
-                        Print("Position with ID " + result.Position.Id + " was opened");
+                        _lastSellID = result.Position.Id;
+                        Print("Position with ID " + _lastSellID + " was opened");
 
-                      /*  if (_totalOpenBuy > 1)
-                        {
-                            _signalExit = 3;
-                            ExecuteExit();
-                        } */
+                        /*  if (_totalOpenBuy > 1)
+                          {
+                              _signalExit = 3;
+                              ExecuteExit();
+                          } */
 
-                        _nextSellCostAveLevel = Symbol.Bid + PipsToDigits(_adrTarget);
+                        double _pyramidDistance = 0;
+                        if (IsPyramidDistanceFixed) _pyramidDistance = PyramidDistance;
+                        else _pyramidDistance = Math.Round(_adrOverall / ADR_Gap, 0);
+
+                        double _costAveDistance = 0;
+                        if (IsCostAveFixed) _costAveDistance = CostAveDistance;
+                        else _costAveDistance = _adrTarget;
+
+                        _nextSellCostAveLevel = Symbol.Bid + PipsToDigits(_costAveDistance);
                         _nextSellPyrAddLevel = Symbol.Bid - PipsToDigits(_pyramidDistance);
                         _PyramidSellStopLoss = result.Position.EntryPrice - PipsToDigits(CommissionsPips);
                     }
@@ -940,6 +986,8 @@ namespace cAlgo.Robots
             return _lotSize;
         }
         #endregion
+
+        
 
         #region ADR Calculations
         private void CalculateADR()
@@ -1063,15 +1111,13 @@ namespace cAlgo.Robots
         {
             foreach (var position in Positions)
             {
-                if (position.SymbolName == SymbolName &&
-                    position.Label == OrderComment &&
-                    position.TradeType == tradeType &&
-                    position.Pips > CommissionsPips
-                   )
-                {
+                if (position.SymbolName != SymbolName) continue;
+                if (position.Label != OrderComment) continue;
+                if (position.TradeType != tradeType) continue;
+                if (position.Pips < CommissionsPips) continue;
+                   
                     double newStopLoss = position.TradeType == TradeType.Buy ? _PyramidBuyStopLoss : _PyramidSellStopLoss;
                     ModifyPosition(position, newStopLoss, null);
-                }
             }
         }
         #endregion
